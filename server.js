@@ -1,9 +1,11 @@
 /**
  * Parakh_Browser - Local Development & Standalone Server
- * Exposes all Serverless Handlers as HTTP REST Endpoints
+ * Exposes all Serverless Handlers as HTTP REST Endpoints & Serves Browser Web Portal
  */
 
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const biometricHandler = require('./src/handlers/biometricHandler');
 const telemetryHandler = require('./src/handlers/telemetryHandler');
 const sessionHandler = require('./src/handlers/sessionHandler');
@@ -12,6 +14,18 @@ const { defaultHeaders } = require('./src/utils/response');
 const logger = require('./src/utils/logger');
 
 const PORT = parseInt(process.env.PORT, 10) || 8000;
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+};
 
 function parseJsonBody(req) {
   return new Promise((resolve) => {
@@ -29,6 +43,30 @@ function parseJsonBody(req) {
   });
 }
 
+function serveStaticFile(res, relativePath) {
+  const filePath = path.join(PUBLIC_DIR, relativePath);
+  if (!filePath.startsWith(PUBLIC_DIR)) {
+    res.writeHead(403, defaultHeaders);
+    res.end('Access Denied');
+    return;
+  }
+
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      res.writeHead(404, defaultHeaders);
+      res.end('File Not Found');
+      return;
+    }
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'text/plain';
+    res.writeHead(200, {
+      ...defaultHeaders,
+      'Content-Type': contentType,
+    });
+    res.end(content);
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const reqUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   const pathname = reqUrl.pathname.replace(/\/+$/, '') || '/';
@@ -40,6 +78,19 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, defaultHeaders);
     res.end();
     return;
+  }
+
+  // Static File Routes
+  if (method === 'GET') {
+    if (pathname === '/') {
+      return serveStaticFile(res, 'index.html');
+    }
+    if (pathname === '/examiner') {
+      return serveStaticFile(res, 'examiner.html');
+    }
+    if (pathname.startsWith('/css/') || pathname.startsWith('/js/')) {
+      return serveStaticFile(res, pathname.slice(1));
+    }
   }
 
   const body = ['POST', 'PUT', 'PATCH'].includes(method) ? await parseJsonBody(req) : {};
@@ -63,6 +114,8 @@ const server = http.createServer(async (req, res) => {
           status: 'healthy',
           system: 'Parakh_Browser',
           version: '1.0.0',
+          portal: `http://127.0.0.1:${PORT}`,
+          examiner: `http://127.0.0.1:${PORT}/examiner`,
           timestamp: new Date().toISOString(),
         }),
       };
@@ -114,9 +167,10 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   logger.info(`Parakh_Browser Server active at http://127.0.0.1:${PORT}`);
   console.log(`\n========================================================`);
-  console.log(`🛡️  Parakh_Browser Server Online`);
-  console.log(`📍 Endpoint: http://127.0.0.1:${PORT}`);
-  console.log(`💡 Health Check: http://127.0.0.1:${PORT}/health`);
+  console.log(`🛡️  Parakh_Browser Full-Stack System Online`);
+  console.log(`📍 Candidate Assessment Portal : http://127.0.0.1:${PORT}`);
+  console.log(`👁️  Examiner Audit Console     : http://127.0.0.1:${PORT}/examiner`);
+  console.log(`💡 Health Check                : http://127.0.0.1:${PORT}/health`);
   console.log(`========================================================\n`);
 });
 

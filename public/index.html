@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Parakh_Browser - Secure Candidate Assessment</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="navbar">
+    <a href="/" class="brand">
+      <div class="brand-logo">P</div>
+      <div class="brand-text">Parakh_Browser</div>
+      <span class="brand-badge">Secure Client</span>
+    </a>
+    <div class="nav-actions">
+      <a href="/" class="nav-link active">Candidate Portal</a>
+      <a href="/examiner" class="nav-link">Examiner Audit Console</a>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- STEP 1: Registration & Biometric Verification Gate -->
+    <section id="step-enrollment" class="card" style="max-width: 580px; margin: 20px auto;">
+      <h2 class="card-title">Candidate Identity Verification</h2>
+      <p class="card-subtitle">Complete initial biometric check-in to enter the secure assessment session.</p>
+
+      <div class="alert alert-warning">
+        <span>🔒 <b>Monitoring Notice:</b> Webcam telemetry, environment anomalies, and attention orientation will be securely audited during this examination.</span>
+      </div>
+
+      <div class="form-group">
+        <label>Full Legal Name</label>
+        <input type="text" id="candidateName" class="form-control" placeholder="e.g. Aarav Sharma" value="Aarav Sharma">
+      </div>
+
+      <div class="form-group">
+        <label>Candidate ID / Roll Number</label>
+        <input type="text" id="candidateId" class="form-control" placeholder="e.g. CS2026-0891" value="CS2026-0891">
+      </div>
+
+      <div class="form-group">
+        <label>Assessment Code</label>
+        <input type="text" id="assessmentCode" class="form-control" placeholder="e.g. set-1" value="set-1">
+      </div>
+
+      <!-- Camera Preview -->
+      <label style="font-size: 13px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">
+        Live Biometric Enrollment Photo
+      </label>
+      <div class="webcam-panel">
+        <video id="enrollWebcam" autoplay muted playsinline></video>
+        <canvas id="enrollCanvas" class="hidden"></canvas>
+        <div class="hud-overlay">
+          <div class="hud-badge"><span class="status-dot"></span> Camera Active</div>
+        </div>
+      </div>
+
+      <button id="btnStartEnroll" class="btn btn-primary" style="width: 100%;">
+        Verify Biometrics &amp; Begin Exam
+      </button>
+      <p id="enrollStatus" style="font-size: 13px; margin-top: 12px; text-align: center; color: var(--text-muted);"></p>
+    </section>
+
+    <!-- STEP 2: Live Assessment Workspace (Initially Hidden) -->
+    <section id="step-assessment" class="hidden">
+      <div class="card exam-header">
+        <div>
+          <h2 id="examName" style="font-size: 20px; font-weight: 700;">Computer Science Foundations Midterm</h2>
+          <p id="candidateBadge" style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
+            Candidate: <b>Aarav Sharma</b> (CS2026-0891)
+          </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <div class="timer-pill" id="examTimer">45:00</div>
+          <button id="btnFinishExam" class="btn btn-danger">Submit Assessment</button>
+        </div>
+      </div>
+
+      <div class="exam-grid">
+        <!-- Question Panel -->
+        <div class="card">
+          <div class="question-nav" id="questionNav"></div>
+
+          <div id="questionContainer">
+            <p id="questionDomain" style="font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; margin-bottom: 8px;">Domain: Algorithms</p>
+            <h3 id="questionText" class="question-text">Loading question content...</h3>
+            <div id="optionsContainer" class="options-list"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 20px;">
+              <button id="btnPrev" class="btn btn-secondary">Previous Question</button>
+              <button id="btnSaveNext" class="btn btn-primary">Save &amp; Next</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Proctoring HUD Sidecar -->
+        <div>
+          <div class="card" style="padding: 20px;">
+            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+              <span>Live Proctoring HUD</span>
+              <span class="hud-badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">Active</span>
+            </h3>
+
+            <!-- Proctoring Camera Viewport -->
+            <div class="webcam-panel" style="aspect-ratio: 4/3; margin-bottom: 14px;">
+              <video id="proctorWebcam" autoplay muted playsinline></video>
+              <canvas id="proctorCanvas" class="hidden"></canvas>
+              <div class="hud-overlay">
+                <div class="hud-badge"><span id="hudDot" class="status-dot"></span> <span id="hudStatus">AI Monitoring</span></div>
+              </div>
+            </div>
+
+            <!-- Telemetry Status Signals -->
+            <div class="telemetry-list">
+              <div class="telemetry-row">
+                <span class="telemetry-label">Facial Presence</span>
+                <span id="telFace" class="telemetry-val ok">Verified (1)</span>
+              </div>
+              <div class="telemetry-row">
+                <span class="telemetry-label">Gaze / Head Pose</span>
+                <span id="telPose" class="telemetry-val ok">Centered (Optimal)</span>
+              </div>
+              <div class="telemetry-row">
+                <span class="telemetry-label">Workspace Persons</span>
+                <span id="telPersons" class="telemetry-val ok">1 Person</span>
+              </div>
+              <div class="telemetry-row">
+                <span class="telemetry-label">Unauthorized Devices</span>
+                <span id="telObjects" class="telemetry-val ok">None Detected</span>
+              </div>
+            </div>
+
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 14px; text-align: center;">
+              Frame telemetry analyzed via Parakh AI Engine every 4 seconds.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: Assessment Completed Screen -->
+    <section id="step-completed" class="card hidden" style="max-width: 580px; margin: 40px auto; text-align: center;">
+      <div style="width: 60px; height: 60px; background: rgba(16, 185, 129, 0.15); border: 2px solid var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px;">
+        <span style="font-size: 28px; color: var(--success);">✓</span>
+      </div>
+      <h2 class="card-title">Assessment Submitted Successfully</h2>
+      <p class="card-subtitle">Your responses and proctoring telemetry log have been securely synchronized with the Parakh_Browser examination vault.</p>
+
+      <div style="background-color: #0b1120; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin: 20px 0; text-align: left; font-size: 13px;">
+        <p><b>Candidate:</b> <span id="summaryCandidate">Aarav Sharma</span></p>
+        <p><b>Session Finalized At:</b> <span id="summaryTime"></span></p>
+        <p><b>Integrity Audit:</b> <span style="color: var(--success); font-weight: 600;">Verified &amp; Archived</span></p>
+      </div>
+
+      <a href="/" class="btn btn-secondary">Return to Portal Home</a>
+    </section>
+  </div>
+
+  <script src="/js/candidate.js"></script>
+</body>
+</html>
