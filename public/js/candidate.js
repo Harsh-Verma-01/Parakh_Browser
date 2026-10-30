@@ -236,6 +236,13 @@ function checkScreenSecurity() {
 
 // --- 3. Warnings & Disqualification System (Page 2: Automatic Warnings & Disqualification) ---
 function triggerWarning(reason, type = 'general') {
+  // Cooldown: same-type auto-triggers can fire at most once per 12 seconds
+  const now = Date.now();
+  if (warningCooldowns[type] && (now - warningCooldowns[type]) < WARNING_COOLDOWN_MS) {
+    return; // Silently skip — already warned recently for this type
+  }
+  warningCooldowns[type] = now;
+
   // Play audible alert buzzer
   playWarningBuzzer();
 
@@ -523,6 +530,11 @@ async function finalizeExam(reason) {
 // --- 6. AI Vision & Proctoring Loop (Requirement #1: Eye Gaze & Face Tracking) ---
 let consecutiveMissingFaceCycles = 0;
 let faceApiModelsLoaded = false;
+let cocoSsdModel = null;
+
+// Warning cooldown tracker — prevents same-type warning from firing more than once per 12s
+const warningCooldowns = {};
+const WARNING_COOLDOWN_MS = 12000;
 
 async function loadFaceApiModels() {
   if (typeof faceapi !== 'undefined') {
@@ -530,33 +542,71 @@ async function loadFaceApiModels() {
       await faceapi.nets.tinyFaceDetector.loadFromUri('/vendor/face-api/model');
       await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/vendor/face-api/model');
       faceApiModelsLoaded = true;
-      console.log('Face-api client models initialized for live gaze tracking');
+      console.log('[Parakh] Face-api models loaded — multi-face + gaze detection active');
     } catch (e) {
-      console.warn('Face-api client fallback active');
+      console.warn('[Parakh] Face-api client fallback active:', e.message);
     }
   }
 }
 
+async function loadCocoSsdModel() {
+  if (typeof cocoSsd !== 'undefined') {
+    try {
+      cocoSsdModel = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      console.log('[Parakh] COCO-SSD object detection model loaded — phone/device detection active');
+    } catch (e) {
+      console.warn('[Parakh] COCO-SSD load failed (device detection unavailable):', e.message);
+    }
+  } else {
+    console.warn('[Parakh] COCO-SSD library not loaded — check script tags in index.html');
+  }
+}
+
 function startProctoringHeartbeat() {
+  // Load both ML models in parallel
   loadFaceApiModels();
+  loadCocoSsdModel();
 
   proctoringTimer = setInterval(async () => {
-    // 1. Client-Side Real-Time Landmark & Gaze Tracking
-    if (faceApiModelsLoaded && proctorWebcam && proctorWebcam.readyState === 4) {
+    if (!proctorWebcam || proctorWebcam.readyState !== 4) return;
+
+    // ── 1. MULTI-FACE + GAZE DETECTION (face-api detectAllFaces) ───────────────
+    if (faceApiModelsLoaded) {
       try {
-        const detection = await faceapi
-          .detectSingleFace(proctorWebcam, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+        const detections = await faceapi
+          .detectAllFaces(proctorWebcam, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
           .withFaceLandmarks(true);
 
-        if (!detection) {
+        const sigFace = document.getElementById('sigFace');
+        const sigPersons = document.getElementById('sigPersons');
+
+        if (!detections || detections.length === 0) {
+          // No face at all
           consecutiveMissingFaceCycles++;
           if (consecutiveMissingFaceCycles >= 2) {
-            triggerWarning('Candidate face missing from camera viewport', 'face_missing');
+            triggerWarning('Candidate face not visible — please look directly at the camera.', 'face_missing');
             consecutiveMissingFaceCycles = 0;
           }
-        } else {
+        } else if (detections.length >= 2) {
+          // ⚠️ MULTIPLE FACES DETECTED
           consecutiveMissingFaceCycles = 0;
-          const landmarks = detection.landmarks;
+          sigFace.innerText = `${detections.length} Faces Detected`;
+          sigFace.style.color = 'var(--danger)';
+          sigPersons.innerText = `${detections.length} Persons Detected`;
+          sigPersons.style.color = 'var(--danger)';
+          triggerWarning(
+            `${detections.length} faces detected in camera frame. Only the registered candidate is permitted.`,
+            'multiple_faces'
+          );
+        } else {
+          // Single face — run gaze check
+          consecutiveMissingFaceCycles = 0;
+          sigFace.innerText = 'Verified (1 Face)';
+          sigFace.style.color = 'var(--success)';
+          sigPersons.innerText = '1 Solo Candidate';
+          sigPersons.style.color = 'var(--success)';
+
+          const landmarks = detections[0].landmarks;
           const leftEye = landmarks.getLeftEye();
           const rightEye = landmarks.getRightEye();
           const nose = landmarks.getNose();
@@ -566,10 +616,10 @@ function startProctoringHeartbeat() {
             const noseOffset = nose[0].x - (leftEye[0].x + rightEye[3].x) / 2;
             const ratio = noseOffset / (eyeDistance || 1);
 
+            const sigGaze = document.getElementById('sigGaze');
             if (ratio < -0.25 || ratio > 0.25) {
-              triggerWarning('Eye movements / gaze shifted away from test screen (Looking Away)', 'gaze_away');
+              triggerWarning('Eye gaze shifted away from exam screen — please look at the monitor.', 'gaze_away');
             } else {
-              const sigGaze = document.getElementById('sigGaze');
               if (sigGaze && !sigGaze.innerText.includes('Flagged')) {
                 sigGaze.innerText = 'Centered (Optimal)';
                 sigGaze.style.color = 'var(--success)';
@@ -578,11 +628,38 @@ function startProctoringHeartbeat() {
           }
         }
       } catch (err) {
-        console.debug('Live landmark detection cycle', err);
+        console.debug('[Parakh] Face detection cycle error:', err.message);
       }
     }
 
-    // 2. Server-side Frame Processing
+    // ── 2. PHONE / DEVICE DETECTION (COCO-SSD) ─────────────────────────────────
+    if (cocoSsdModel) {
+      try {
+        const predictions = await cocoSsdModel.detect(proctorWebcam);
+        const BANNED_DEVICES = ['cell phone', 'remote', 'laptop', 'keyboard', 'mouse', 'book'];
+        const found = predictions.filter(p => BANNED_DEVICES.includes(p.class) && p.score > 0.50);
+        const sigDevices = document.getElementById('sigDevices');
+
+        if (found.length > 0) {
+          const label = found.map(d => `${d.class} (${Math.round(d.score * 100)}%)`).join(', ');
+          sigDevices.innerText = `Detected: ${label}`;
+          sigDevices.style.color = 'var(--danger)';
+          triggerWarning(
+            `Unauthorized device in camera view: ${label}. Remove all electronic devices from your workspace.`,
+            'device_detected'
+          );
+        } else {
+          if (sigDevices && !sigDevices.innerText.includes('Detected')) {
+            sigDevices.innerText = 'Clean (0 Devices)';
+            sigDevices.style.color = 'var(--success)';
+          }
+        }
+      } catch (e) {
+        console.debug('[Parakh] Device detection cycle error:', e.message);
+      }
+    }
+
+    // ── 3. SERVER-SIDE FRAME TELEMETRY ─────────────────────────────────────────
     const frame = captureFrameBase64(proctorWebcam, proctorCanvas);
     try {
       const res = await fetch('/process', {
@@ -594,13 +671,12 @@ function startProctoringHeartbeat() {
           image: frame,
         }),
       });
-
       if (res.ok) {
         const telemetry = await res.json();
         evaluateSignals(telemetry);
       }
     } catch (e) {
-      console.warn('Heartbeat skipped');
+      console.warn('[Parakh] Heartbeat frame upload skipped');
     }
   }, 3500);
 }
