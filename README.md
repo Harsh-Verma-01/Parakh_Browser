@@ -23,6 +23,14 @@
 
 ---
 
+## 🚀 Quick Access
+
+- **Candidate Assessment Portal**: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **Examiner Audit Console**: [http://127.0.0.1:8000/examiner](http://127.0.0.1:8000/examiner)
+- **System Health & Telemetry**: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
+
+---
+
 ## 🏛️ Architecture Overview
 
 ```mermaid
