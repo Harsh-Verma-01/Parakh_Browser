@@ -1,0 +1,28 @@
+{
+  "name": "Parakh_Browser",
+  "version": "1.0.0",
+  "description": "Parakh_Browser - Next-Gen Academic Integrity & Intelligent Proctoring Engine",
+  "main": "index.js",
+  "author": "Parakh Development Team",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node tests/api.test.js",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1500.0",
+    "node-fetch": "^2.7.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

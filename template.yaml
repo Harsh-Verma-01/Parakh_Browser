@@ -1,0 +1,299 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Cloud Infrastructure and Serverless AI Services for Parakh_Browser - Academic Integrity & Secure Assessment System
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    MemorySize: 256
+    Timeout: 30
+    Environment:
+      Variables:
+        COLLECTION_ID: !Ref ResourcePrefix
+        FACES_TABLENAME: !Ref FacesTable
+        MIN_CONFIDENCE: !Ref MinConfidence
+        OBJECTS_OF_INTEREST_LABELS: !Join [",", !Ref ObjectsOfInterestLabels]
+        REGION: !Ref AWS::Region
+        VERSION: '1.0.0'
+  Api:
+    EndpointConfiguration: REGIONAL
+    Cors:
+      AllowMethods: "'*'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
+    Auth:
+      DefaultAuthorizer: CognitoAuthorizer
+      Authorizers:
+        CognitoAuthorizer:
+          UserPoolArn: !GetAtt CognitoUserPool.Arn
+      AddDefaultAuthorizerToCorsPreflight: false
+    GatewayResponses:
+      DEFAULT_4XX:
+        ResponseTemplates:
+          "application/json": '{ "message": $context.error.messageString, "system": "Parakh_Browser" }'
+        ResponseParameters:
+          Headers:
+            Access-Control-Allow-Methods: "'*'"
+            Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+            Access-Control-Allow-Origin: "'*'"
+      BAD_REQUEST_BODY:
+        StatusCode: 422
+        ResponseTemplates:
+          "application/json": '{ "message": "Malformed request payload", "error": $context.error.messageString }'
+        ResponseParameters:
+          Headers:
+            Access-Control-Allow-Methods: "'*'"
+            Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+            Access-Control-Allow-Origin: "'*'"
+
+Parameters:
+  AdminEmail:
+    Description: Primary Administrator / Examiner Email for Cognito Authentication
+    Type: String
+    AllowedPattern: ^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$
+  MinConfidence:
+    Description: Confidence threshold for Rekognition facial recognition and object labels
+    Type: Number
+    Default: 80
+    MinValue: 0
+    MaxValue: 100
+  ObjectsOfInterestLabels:
+    Description: Comma-separated list of prohibited objects in examination environment
+    Type: CommaDelimitedList
+    Default: "Mobile Phone,Cell Phone,Phone,Headphones,Book"
+  ResourcePrefix:
+    Description: Resource naming prefix for Parakh_Browser cloud components
+    Type: String
+    Default: ParakhBrowser
+    AllowedPattern: ^[a-zA-Z0-9_]*$
+  CreateCloudFrontDistribution:
+    Description: Deploy CloudFront CDN distribution for candidate UI delivery
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+
+Conditions:
+  WithCloudFront: !Equals [!Ref CreateCloudFrontDistribution, "true"]
+
+Outputs:
+  ParakhApiEndpoint:
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+    Description: Parakh_Browser Core API Gateway Endpoint
+  CognitoUserPoolId:
+    Value: !Ref CognitoUserPool
+    Description: Parakh_Browser Examiner & Candidate Cognito User Pool
+  BiometricCollection:
+    Value: !Ref ResourcePrefix
+    Description: AWS Rekognition Facial Biometrics Collection ID
+
+Resources:
+  WebUIBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  WebUIBucketReadPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: WithCloudFront
+    Properties:
+      Bucket: !Ref WebUIBucket
+      PolicyDocument:
+        Statement:
+          - Action: s3:GetObject
+            Effect: Allow
+            Resource: !Sub arn:aws:s3:::${WebUIBucket}/*
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+
+  CognitoIdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub ${ResourcePrefix}IdentityPool
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref CognitoUserPoolClient
+          ProviderName: !GetAtt CognitoUserPool.ProviderName
+
+  CognitoIdentityPoolRole:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref CognitoIdentityPool
+      Roles:
+        authenticated: !GetAtt ApiGatewayInvokeRole.Arn
+        unauthenticated: !GetAtt ApiGatewayInvokeRole.Arn
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${ResourcePrefix}_UserPool
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailMessage: 'Welcome to Parakh_Browser Assessment System.<br>Your username is {username} and temporary security key is {####}.'
+          EmailSubject: 'Parakh_Browser Authentication Credentials'
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          RequireUppercase: true
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ClientName: !Sub ${ResourcePrefix}_Client
+      GenerateSecret: false
+      RefreshTokenValidity: 7
+
+  CognitoUserPoolUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      Username: !Ref AdminEmail
+      UserPoolId: !Ref CognitoUserPool
+      DesiredDeliveryMediums:
+        - EMAIL
+      UserAttributes:
+        - Name: email
+          Value: !Ref AdminEmail
+        - Name: email_verified
+          Value: "true"
+
+  ApiGatewayInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated:
+                - cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "cognito-identity.amazonaws.com:aud": !Ref CognitoIdentityPool
+
+  # Serverless Functions
+  IndexCandidateBiometricsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/biometricHandler.enrollCandidate
+      CodeUri: ./
+      Description: Enrolls candidate biometrics into Parakh_Browser facial collection
+      Events:
+        EnrollBiometrics:
+          Type: Api
+          Properties:
+            Path: /faces/index
+            Method: post
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref FacesTable
+        - RekognitionWriteOnlyAccessPolicy:
+            CollectionId: !Ref ResourcePrefix
+
+  ProcessTelemetryFrameFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/telemetryHandler.processProctoringFrame
+      CodeUri: ./
+      Description: Real-time candidate webcam frame proctoring and environmental analysis
+      Events:
+        ProcessTelemetry:
+          Type: Api
+          Properties:
+            Path: /process
+            Method: post
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FacesTable
+        - RekognitionReadPolicy:
+            CollectionId: !Ref ResourcePrefix
+        - RekognitionDetectOnlyPolicy: {}
+
+  SessionManagementFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/sessionHandler.startSession
+      CodeUri: ./
+      Description: Manages Parakh_Browser examination session lifecycle
+      Events:
+        StartSession:
+          Type: Api
+          Properties:
+            Path: /exam/start
+            Method: post
+        EndSession:
+          Type: Api
+          Properties:
+            Path: /exam/end
+            Method: post
+        CheckStatus:
+          Type: Api
+          Properties:
+            Path: /exam/status
+            Method: post
+
+  FacesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ResourcePrefix}_CandidateFaces
+      AttributeDefinitions:
+        - AttributeName: ExternalImageId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ExternalImageId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Condition: WithCloudFront
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Ref WebUIBucket
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: WithCloudFront
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt WebUIBucket.RegionalDomainName
+            Id: !Sub s3Origin-${ResourcePrefix}
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+        Enabled: true
+        HttpVersion: http2
+        Comment: Parakh_Browser Web Client CDN Distribution
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - HEAD
+            - GET
+            - OPTIONS
+          TargetOriginId: !Sub s3Origin-${ResourcePrefix}
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: redirect-to-https
+        PriceClass: PriceClass_All
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
