@@ -1,18 +1,22 @@
-/**
- * Parakh_Browser - Core Serverless Entrypoint
- * Academic Integrity & Intelligent Proctoring Engine
- */
-
 const biometricHandler = require('./src/handlers/biometricHandler');
 const telemetryHandler = require('./src/handlers/telemetryHandler');
 
-module.exports = {
-  // Biometric enrollment
-  indexHandler: biometricHandler.enrollCandidate,
-  enrollCandidate: biometricHandler.enrollCandidate,
+const routes = {
+    '/api/enrollCandidate': biometricHandler.enrollCandidate,
+    '/api/processProctoringFrame': telemetryHandler.processProctoringFrame,
+};
 
-  // Real-time telemetry & frame proctoring
-  processHandler: telemetryHandler.processProctoringFrame,
-  handler: telemetryHandler.processProctoringFrame,
-  processProctoringFrame: telemetryHandler.processProctoringFrame,
+module.exports = async (req, res) => {
+    const pathname = new URL(req.url, 'http://localhost').pathname;
+
+    const handler = routes[pathname];
+
+    if (!handler) {
+        return res.status(404).json({
+            success: false,
+            message: 'API route not found'
+        });
+    }
+
+    return handler(req, res);
 };
