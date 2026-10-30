@@ -157,7 +157,7 @@ researchQueryInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') executeResearchSearch();
 });
 
-// --- 2. Activity Logging: Keystrokes & Mouse Movement (Requirement: Activity Logging) ---
+// --- 2. Activity Logging: Keystrokes, Mouse & Anti-Cheating Event Guards ---
 window.addEventListener('keydown', (e) => {
   keystrokeCount++;
   counterKeys.innerText = keystrokeCount;
@@ -165,7 +165,7 @@ window.addEventListener('keydown', (e) => {
   // Anti-Cheating: Block inspection shortcuts
   if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I') || (e.ctrlKey && e.key === 'u')) {
     e.preventDefault();
-    triggerWarning('Developer inspection tools are strictly prohibited by Parakh Browser.');
+    triggerWarning('Developer inspection tools (F12 / Inspect) are strictly prohibited.', 'devtools_blocked');
   }
 });
 
@@ -177,15 +177,49 @@ window.addEventListener('click', () => {
 // Disable Right-Click Context Menu
 window.addEventListener('contextmenu', (e) => {
   e.preventDefault();
-  triggerWarning('Right-click context menu is disabled in secure exam environment.');
+  triggerWarning('Right-click context menu is disabled in secure exam environment.', 'context_menu');
 });
 
-// Window Blur Detection (Focus Loss / App Switching)
+// Disable Clipboard Copy, Paste, Cut
+window.addEventListener('copy', (e) => {
+  e.preventDefault();
+  triggerWarning('Clipboard copying is blocked by Parakh Browser security policy.', 'clipboard_blocked');
+});
+window.addEventListener('paste', (e) => {
+  e.preventDefault();
+  triggerWarning('Pasting external content into the exam is blocked.', 'clipboard_blocked');
+});
+window.addEventListener('cut', (e) => {
+  e.preventDefault();
+  triggerWarning('Clipboard action (cut) is blocked.', 'clipboard_blocked');
+});
+
+// Window Blur Detection (Focus Loss / App Switching / Alt+Tab)
 window.addEventListener('blur', () => {
   if (activeTab === 'exam') {
-    triggerWarning('Window focus lost. Exiting the browser kiosk window is flagged.');
+    triggerWarning('Window focus lost / application switching (Alt+Tab) detected.', 'window_blur');
   }
 });
+
+// Audio Warning Buzzer (Web Audio API Synthesizer)
+function playWarningBuzzer() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.35);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (e) {
+    console.warn('Audio buzzer unpermitted');
+  }
+}
 
 // Multiple Display / Screen Mirroring Check (Requirement #3)
 function checkScreenSecurity() {
@@ -193,7 +227,7 @@ function checkScreenSecurity() {
   if (window.screen && window.screen.isExtended) {
     sigScreen.innerText = 'Dual Monitor Flagged';
     sigScreen.style.color = 'var(--danger)';
-    triggerWarning('Multiple displays or screen mirroring detected. Please disconnect external monitors.');
+    triggerWarning('Multiple displays or screen mirroring detected. Disconnect external monitors.', 'screen_mirroring');
   } else {
     sigScreen.innerText = 'Single Display (OK)';
     sigScreen.style.color = 'var(--success)';
@@ -201,11 +235,39 @@ function checkScreenSecurity() {
 }
 
 // --- 3. Warnings & Disqualification System (Page 2: Automatic Warnings & Disqualification) ---
-function triggerWarning(reason) {
+function triggerWarning(reason, type = 'general') {
+  // Play audible alert buzzer
+  playWarningBuzzer();
+
   warningCount++;
   warnCounter.innerText = `${warningCount}/${MAX_WARNINGS}`;
 
-  logTelemetryEvent('proctoring_warning', 'warn', { reason, warningCount });
+  // Update live HUD signals based on violation type
+  const sigFace = document.getElementById('sigFace');
+  const sigGaze = document.getElementById('sigGaze');
+  const sigPersons = document.getElementById('sigPersons');
+  const sigDevices = document.getElementById('sigDevices');
+  const sigScreen = document.getElementById('sigScreen');
+
+  if (type === 'gaze_away') {
+    sigGaze.innerText = 'Looking Away (Flagged)';
+    sigGaze.style.color = 'var(--danger)';
+  } else if (type === 'face_missing') {
+    sigFace.innerText = 'Face Missing (Flagged)';
+    sigFace.style.color = 'var(--danger)';
+  } else if (type === 'multiple_faces') {
+    sigPersons.innerText = '2 Persons Detected';
+    sigPersons.style.color = 'var(--danger)';
+  } else if (type === 'device_detected') {
+    sigDevices.innerText = 'Mobile Phone Detected';
+    sigDevices.style.color = 'var(--danger)';
+  } else if (type === 'screen_mirroring') {
+    sigScreen.innerText = 'Mirroring Flagged';
+    sigScreen.style.color = 'var(--danger)';
+  }
+
+  // Transmit violation event to backend
+  logTelemetryEvent('proctoring_warning', 'high', { reason, type, warningCount });
 
   const modal = document.getElementById('warningModal');
   const countEl = document.getElementById('warnModalCount');
@@ -214,6 +276,8 @@ function triggerWarning(reason) {
   countEl.innerText = `${warningCount} / ${MAX_WARNINGS}`;
   descEl.innerText = reason;
   modal.classList.remove('hidden');
+
+  showToast(`⚠️ WARNING ${warningCount}/${MAX_WARNINGS}: ${reason}`);
 
   if (warningCount >= MAX_WARNINGS) {
     descEl.innerText = 'Disqualification threshold reached (3/3 infractions). Submitting test automatically.';
@@ -456,11 +520,70 @@ async function finalizeExam(reason) {
   document.getElementById('finalSearches').innerText = aiSearchesCount;
 }
 
-// --- 6. AI Vision & Proctoring Loop (Requirement #1) ---
-function startProctoringHeartbeat() {
-  proctoringTimer = setInterval(async () => {
-    const frame = captureFrameBase64(proctorWebcam, proctorCanvas);
+// --- 6. AI Vision & Proctoring Loop (Requirement #1: Eye Gaze & Face Tracking) ---
+let consecutiveMissingFaceCycles = 0;
+let faceApiModelsLoaded = false;
 
+async function loadFaceApiModels() {
+  if (typeof faceapi !== 'undefined') {
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/vendor/face-api/model');
+      await faceapi.nets.faceLandmark68TinyNet.loadFromUri('/vendor/face-api/model');
+      faceApiModelsLoaded = true;
+      console.log('Face-api client models initialized for live gaze tracking');
+    } catch (e) {
+      console.warn('Face-api client fallback active');
+    }
+  }
+}
+
+function startProctoringHeartbeat() {
+  loadFaceApiModels();
+
+  proctoringTimer = setInterval(async () => {
+    // 1. Client-Side Real-Time Landmark & Gaze Tracking
+    if (faceApiModelsLoaded && proctorWebcam && proctorWebcam.readyState === 4) {
+      try {
+        const detection = await faceapi
+          .detectSingleFace(proctorWebcam, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+          .withFaceLandmarks(true);
+
+        if (!detection) {
+          consecutiveMissingFaceCycles++;
+          if (consecutiveMissingFaceCycles >= 2) {
+            triggerWarning('Candidate face missing from camera viewport', 'face_missing');
+            consecutiveMissingFaceCycles = 0;
+          }
+        } else {
+          consecutiveMissingFaceCycles = 0;
+          const landmarks = detection.landmarks;
+          const leftEye = landmarks.getLeftEye();
+          const rightEye = landmarks.getRightEye();
+          const nose = landmarks.getNose();
+
+          if (leftEye && rightEye && nose) {
+            const eyeDistance = Math.abs(rightEye[3].x - leftEye[0].x);
+            const noseOffset = nose[0].x - (leftEye[0].x + rightEye[3].x) / 2;
+            const ratio = noseOffset / (eyeDistance || 1);
+
+            if (ratio < -0.25 || ratio > 0.25) {
+              triggerWarning('Eye movements / gaze shifted away from test screen (Looking Away)', 'gaze_away');
+            } else {
+              const sigGaze = document.getElementById('sigGaze');
+              if (sigGaze && !sigGaze.innerText.includes('Flagged')) {
+                sigGaze.innerText = 'Centered (Optimal)';
+                sigGaze.style.color = 'var(--success)';
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.debug('Live landmark detection cycle', err);
+      }
+    }
+
+    // 2. Server-side Frame Processing
+    const frame = captureFrameBase64(proctorWebcam, proctorCanvas);
     try {
       const res = await fetch('/process', {
         method: 'POST',
@@ -479,7 +602,7 @@ function startProctoringHeartbeat() {
     } catch (e) {
       console.warn('Heartbeat skipped');
     }
-  }, 4000);
+  }, 3500);
 }
 
 function evaluateSignals(telemetry) {

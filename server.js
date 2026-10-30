@@ -21,6 +21,7 @@ const MIME_TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.bin': 'application/octet-stream',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
@@ -88,7 +89,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/examiner') {
       return serveStaticFile(res, 'examiner.html');
     }
-    if (pathname.startsWith('/css/') || pathname.startsWith('/js/')) {
+    if (pathname.startsWith('/css/') || pathname.startsWith('/js/') || pathname.startsWith('/vendor/')) {
       return serveStaticFile(res, pathname.slice(1));
     }
   }

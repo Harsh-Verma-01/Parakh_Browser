@@ -197,10 +197,29 @@
             </div>
 
             <!-- Quick Info -->
-            <div class="camera-hud-box" style="font-size: 12px; color: var(--text-muted);">
+            <div class="camera-hud-box" style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
               <b>Candidate ID:</b> <span id="hudCandidate">student@college.edu</span><br>
               <b>Allowed Tools:</b> Research Tab (Audited)<br>
               <b>Rule:</b> Gaze deviations &gt; 12° or tab blur logged.
+            </div>
+
+            <!-- Anti-Cheating & WUElev8 Flag Test Triggers -->
+            <div class="camera-hud-box" style="border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.05);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: #f87171;">🧪 Anti-Cheating Flag Triggers</span>
+                <span class="kiosk-badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 9px;">WUElev8 Flags</span>
+              </div>
+              <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+                Click any flag below to immediately test the warning system, audio buzzer, and auto-disqualification:
+              </p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                <button class="nav-btn" style="width: 100%; font-size: 11px; padding: 6px; background: #0b111e; border: 1px solid #334155; color: #cbd5e1;" onclick="triggerWarning('Eye movements / gaze shifted away from test screen (Looking Away)', 'gaze_away')">👀 Gaze Away</button>
+                <button class="nav-btn" style="width: 100%; font-size: 11px; padding: 6px; background: #0b111e; border: 1px solid #334155; color: #cbd5e1;" onclick="triggerWarning('Candidate face missing from camera viewport', 'face_missing')">👤 Face Missing</button>
+                <button class="nav-btn" style="width: 100%; font-size: 11px; padding: 6px; background: #0b111e; border: 1px solid #334155; color: #cbd5e1;" onclick="triggerWarning('Multiple persons detected in camera viewport', 'multiple_faces')">👥 Multi-Person</button>
+                <button class="nav-btn" style="width: 100%; font-size: 11px; padding: 6px; background: #0b111e; border: 1px solid #334155; color: #cbd5e1;" onclick="triggerWarning('Unauthorized mobile phone / electronic device detected', 'device_detected')">📱 Phone Detected</button>
+                <button class="nav-btn" style="width: 100%; font-size: 11px; padding: 6px; background: #0b111e; border: 1px solid #334155; color: #cbd5e1;" onclick="triggerWarning('Multiple displays or screen mirroring detected', 'screen_mirroring')">🖥️ Screen Mirror</button>
+                <button class="nav-btn" style="width: 100%; font-size: 11px; padding: 6px; background: #0b111e; border: 1px solid #334155; color: #cbd5e1;" onclick="triggerWarning('Window focus lost / application switching (Alt+Tab)', 'window_blur')">🪟 Focus Lost</button>
+              </div>
             </div>
           </div>
         </div>
@@ -301,6 +320,7 @@
 
   <div id="toastNotification" class="toast-notice hidden"></div>
 
+  <script src="/vendor/face-api/face-api.js"></script>
   <script src="/js/candidate.js"></script>
 </body>
 </html>
