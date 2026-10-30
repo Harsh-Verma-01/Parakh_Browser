@@ -534,7 +534,7 @@ let cocoSsdModel = null;
 
 // Warning cooldown tracker — prevents same-type warning from firing more than once per 12s
 const warningCooldowns = {};
-const WARNING_COOLDOWN_MS = 12000;
+const WARNING_COOLDOWN_MS = 8000;
 
 async function loadFaceApiModels() {
   if (typeof faceapi !== 'undefined') {
@@ -570,116 +570,103 @@ function startProctoringHeartbeat() {
   proctoringTimer = setInterval(async () => {
     if (!proctorWebcam || proctorWebcam.readyState !== 4) return;
 
-    // ── 1. MULTI-FACE + GAZE DETECTION (face-api detectAllFaces) ───────────────
-    if (faceApiModelsLoaded) {
-      try {
-        const detections = await faceapi
-          .detectAllFaces(proctorWebcam, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
-          .withFaceLandmarks(true);
+    // ── Run face detection + device detection IN PARALLEL ──────────────────────
+    await Promise.all([runFaceDetection(), runDeviceDetection()]);
 
-        const sigFace = document.getElementById('sigFace');
-        const sigPersons = document.getElementById('sigPersons');
-
-        if (!detections || detections.length === 0) {
-          // No face at all
-          consecutiveMissingFaceCycles++;
-          if (consecutiveMissingFaceCycles >= 2) {
-            triggerWarning('Candidate face not visible — please look directly at the camera.', 'face_missing');
-            consecutiveMissingFaceCycles = 0;
-          }
-        } else if (detections.length >= 2) {
-          // ⚠️ MULTIPLE FACES DETECTED
-          consecutiveMissingFaceCycles = 0;
-          sigFace.innerText = `${detections.length} Faces Detected`;
-          sigFace.style.color = 'var(--danger)';
-          sigPersons.innerText = `${detections.length} Persons Detected`;
-          sigPersons.style.color = 'var(--danger)';
-          triggerWarning(
-            `${detections.length} faces detected in camera frame. Only the registered candidate is permitted.`,
-            'multiple_faces'
-          );
-        } else {
-          // Single face — run gaze check
-          consecutiveMissingFaceCycles = 0;
-          sigFace.innerText = 'Verified (1 Face)';
-          sigFace.style.color = 'var(--success)';
-          sigPersons.innerText = '1 Solo Candidate';
-          sigPersons.style.color = 'var(--success)';
-
-          const landmarks = detections[0].landmarks;
-          const leftEye = landmarks.getLeftEye();
-          const rightEye = landmarks.getRightEye();
-          const nose = landmarks.getNose();
-
-          if (leftEye && rightEye && nose) {
-            const eyeDistance = Math.abs(rightEye[3].x - leftEye[0].x);
-            const noseOffset = nose[0].x - (leftEye[0].x + rightEye[3].x) / 2;
-            const ratio = noseOffset / (eyeDistance || 1);
-
-            const sigGaze = document.getElementById('sigGaze');
-            if (ratio < -0.25 || ratio > 0.25) {
-              triggerWarning('Eye gaze shifted away from exam screen — please look at the monitor.', 'gaze_away');
-            } else {
-              if (sigGaze && !sigGaze.innerText.includes('Flagged')) {
-                sigGaze.innerText = 'Centered (Optimal)';
-                sigGaze.style.color = 'var(--success)';
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.debug('[Parakh] Face detection cycle error:', err.message);
-      }
-    }
-
-    // ── 2. PHONE / DEVICE DETECTION (COCO-SSD) ─────────────────────────────────
-    if (cocoSsdModel) {
-      try {
-        const predictions = await cocoSsdModel.detect(proctorWebcam);
-        const BANNED_DEVICES = ['cell phone', 'remote', 'laptop', 'keyboard', 'mouse', 'book'];
-        const found = predictions.filter(p => BANNED_DEVICES.includes(p.class) && p.score > 0.50);
-        const sigDevices = document.getElementById('sigDevices');
-
-        if (found.length > 0) {
-          const label = found.map(d => `${d.class} (${Math.round(d.score * 100)}%)`).join(', ');
-          sigDevices.innerText = `Detected: ${label}`;
-          sigDevices.style.color = 'var(--danger)';
-          triggerWarning(
-            `Unauthorized device in camera view: ${label}. Remove all electronic devices from your workspace.`,
-            'device_detected'
-          );
-        } else {
-          if (sigDevices && !sigDevices.innerText.includes('Detected')) {
-            sigDevices.innerText = 'Clean (0 Devices)';
-            sigDevices.style.color = 'var(--success)';
-          }
-        }
-      } catch (e) {
-        console.debug('[Parakh] Device detection cycle error:', e.message);
-      }
-    }
-
-    // ── 3. SERVER-SIDE FRAME TELEMETRY ─────────────────────────────────────────
+    // ── SERVER-SIDE FRAME TELEMETRY (fire-and-forget, non-blocking) ────────────
     const frame = captureFrameBase64(proctorWebcam, proctorCanvas);
-    try {
-      const res = await fetch('/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: candidateSession.candidateId,
-          questionSetID: candidateSession.examId,
-          image: frame,
-        }),
-      });
-      if (res.ok) {
-        const telemetry = await res.json();
-        evaluateSignals(telemetry);
-      }
-    } catch (e) {
-      console.warn('[Parakh] Heartbeat frame upload skipped');
-    }
-  }, 3500);
+    fetch('/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: candidateSession.candidateId,
+        questionSetID: candidateSession.examId,
+        image: frame,
+      }),
+    }).then(r => r.ok && r.json()).then(t => t && evaluateSignals(t)).catch(() => {});
+  }, 1200);
 }
+
+async function runFaceDetection() {
+  if (!faceApiModelsLoaded) return;
+  try {
+    // inputSize 128 = ~4x faster than 224, sufficient for multi-face counting
+    const detections = await faceapi
+      .detectAllFaces(proctorWebcam, new faceapi.TinyFaceDetectorOptions({ inputSize: 128, scoreThreshold: 0.4 }))
+      .withFaceLandmarks(true);
+
+    const sigFace = document.getElementById('sigFace');
+    const sigPersons = document.getElementById('sigPersons');
+
+    if (!detections || detections.length === 0) {
+      consecutiveMissingFaceCycles++;
+      if (consecutiveMissingFaceCycles >= 2) {
+        triggerWarning('Candidate face not visible — please look directly at the camera.', 'face_missing');
+        consecutiveMissingFaceCycles = 0;
+      }
+    } else if (detections.length >= 2) {
+      consecutiveMissingFaceCycles = 0;
+      sigFace.innerText = `${detections.length} Faces Detected`;
+      sigFace.style.color = 'var(--danger)';
+      sigPersons.innerText = `${detections.length} Persons Detected`;
+      sigPersons.style.color = 'var(--danger)';
+      triggerWarning(
+        `${detections.length} faces detected in camera frame. Only the registered candidate is permitted.`,
+        'multiple_faces'
+      );
+    } else {
+      consecutiveMissingFaceCycles = 0;
+      sigFace.innerText = 'Verified (1 Face)';
+      sigFace.style.color = 'var(--success)';
+      sigPersons.innerText = '1 Solo Candidate';
+      sigPersons.style.color = 'var(--success)';
+
+      const landmarks = detections[0].landmarks;
+      const leftEye = landmarks.getLeftEye();
+      const rightEye = landmarks.getRightEye();
+      const nose = landmarks.getNose();
+
+      if (leftEye && rightEye && nose) {
+        const eyeDistance = Math.abs(rightEye[3].x - leftEye[0].x);
+        const noseOffset = nose[0].x - (leftEye[0].x + rightEye[3].x) / 2;
+        const ratio = noseOffset / (eyeDistance || 1);
+        const sigGaze = document.getElementById('sigGaze');
+        if (ratio < -0.25 || ratio > 0.25) {
+          triggerWarning('Eye gaze shifted away from exam screen — please look at the monitor.', 'gaze_away');
+        } else if (sigGaze && !sigGaze.innerText.includes('Flagged')) {
+          sigGaze.innerText = 'Centered (Optimal)';
+          sigGaze.style.color = 'var(--success)';
+        }
+      }
+    }
+  } catch (err) {
+    console.debug('[Parakh] Face detection error:', err.message);
+  }
+}
+
+async function runDeviceDetection() {
+  if (!cocoSsdModel) return;
+  try {
+    const predictions = await cocoSsdModel.detect(proctorWebcam);
+    const BANNED = ['cell phone', 'remote', 'laptop', 'keyboard', 'mouse', 'book'];
+    const found = predictions.filter(p => BANNED.includes(p.class) && p.score > 0.50);
+    const sigDevices = document.getElementById('sigDevices');
+
+    if (found.length > 0) {
+      const label = found.map(d => `${d.class} (${Math.round(d.score * 100)}%)`).join(', ');
+      sigDevices.innerText = `Detected: ${label}`;
+      sigDevices.style.color = 'var(--danger)';
+      triggerWarning(
+        `Unauthorized device in camera view: ${label}. Remove all electronic devices from your workspace.`,
+        'device_detected'
+      );
+    } else if (sigDevices && !sigDevices.innerText.includes('Detected')) {
+      sigDevices.innerText = 'Clean (0 Devices)';
+      sigDevices.style.color = 'var(--success)';
+    }
+  } catch (e) {
+    console.debug('[Parakh] Device detection error:', e.message);
+  }
 
 function evaluateSignals(telemetry) {
   if (!Array.isArray(telemetry) || telemetry.length < 4) return;
