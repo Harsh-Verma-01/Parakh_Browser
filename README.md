@@ -245,3 +245,5 @@ When prompted during SAM deployment:
 - **Candidate Consent**: All biometric processing and video telemetry require explicit participant acknowledgment prior to session launch.
 - **Data Minimization**: Video streams are analyzed frame-by-frame; only flagged violation frames are retained in S3 for forensic human audit.
 - **Examiner-in-the-Loop**: Automated telemetry signals assist human reviewers and do not execute irrevocable decisions without proctor oversight.
+#   P a r a k h _ B r o w s e r  
+ 
