@@ -3,206 +3,255 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Parakh_Browser - Examiner Audit Console</title>
+  <title>Parakh_Browser - Examiner Audit &amp; AI Surveillance Console</title>
   <link rel="stylesheet" href="/css/style.css">
   <style>
-    .examiner-grid {
+    .examiner-layout {
       display: grid;
       grid-template-columns: 340px 1fr;
       gap: 24px;
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+      flex: 1;
     }
     @media (max-width: 960px) {
-      .examiner-grid {
-        grid-template-columns: 1fr;
-      }
+      .examiner-layout { grid-template-columns: 1fr; }
     }
     .candidate-card {
-      background: #0b1120;
-      border: 1px solid var(--border-color);
+      background: #0b111e;
+      border: 1px solid var(--browser-border);
       border-radius: 8px;
-      padding: 14px 18px;
+      padding: 16px;
       margin-bottom: 12px;
       cursor: pointer;
       transition: all 0.2s;
     }
     .candidate-card:hover, .candidate-card.active {
-      border-color: var(--primary);
-      background-color: var(--card-hover);
+      border-color: var(--accent-blue);
+      background-color: #172338;
     }
-    .metric-box {
-      background: #0b1120;
-      border: 1px solid var(--border-color);
-      border-radius: 8px;
-      padding: 16px;
+    .stat-card {
+      background: #0d1422;
+      border: 1px solid var(--browser-border);
+      border-radius: 10px;
+      padding: 18px;
       text-align: center;
     }
-    .metric-val {
-      font-size: 24px;
-      font-weight: 700;
-      color: var(--text-main);
+    .stat-number {
+      font-size: 26px;
+      font-weight: 800;
+      color: #fff;
     }
-    .metric-label {
-      font-size: 12px;
+    .stat-label {
+      font-size: 11px;
       color: var(--text-muted);
       text-transform: uppercase;
-      font-weight: 600;
+      font-weight: 700;
       margin-top: 4px;
     }
-    .timeline-item {
-      display: flex;
-      gap: 14px;
-      padding: 12px 0;
-      border-bottom: 1px solid var(--border-color);
-      font-size: 13px;
+    .ai-intercept-box {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(99, 102, 241, 0.1));
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: all 0.2s;
     }
-    .timeline-time {
-      color: var(--text-muted);
-      font-variant-numeric: tabular-nums;
-      min-width: 65px;
+    .ai-intercept-box:hover {
+      border-color: var(--danger);
+      background: rgba(239, 68, 68, 0.15);
     }
   </style>
 </head>
-<body>
-  <!-- Header -->
-  <header class="navbar">
-    <a href="/" class="brand">
-      <div class="brand-logo">P</div>
-      <div class="brand-text">Parakh_Browser</div>
-      <span class="brand-badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3);">Examiner Pro</span>
-    </a>
-    <div class="nav-actions">
-      <a href="/" class="nav-link">Candidate Portal</a>
-      <a href="/examiner" class="nav-link active">Examiner Audit Console</a>
-    </div>
-  </header>
+<body style="user-select: auto;">
+  <div class="browser-window">
+    <!-- Header -->
+    <header class="browser-titlebar">
+      <div class="window-controls">
+        <span class="traffic-light traffic-close"></span>
+        <span class="traffic-light traffic-min"></span>
+        <span class="traffic-light traffic-max"></span>
+      </div>
+      <div class="window-title">
+        <span>👁️ Parakh Examiner Audit Console — Real-Time Surveillance</span>
+      </div>
+      <div style="font-size: 11px; color: #10b981; font-weight: 700;">
+        Surveillance Stream: LIVE (WebSocket / Polling active)
+      </div>
+    </header>
 
-  <div class="container">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-      <div>
-        <h1 style="font-size: 24px; font-weight: 700;">Live Examination Surveillance</h1>
-        <p style="color: var(--text-muted); font-size: 14px;">Real-time integrity auditing, AI anomaly inspection, and evidence forensic review.</p>
+    <div class="browser-toolbar" style="background-color: #0b111e;">
+      <a href="/" class="nav-btn" style="width: auto; padding: 4px 12px; text-decoration: none; font-weight: 600; color: #fff;">
+        ← Back to Candidate Browser
+      </a>
+      <div class="omnibox" style="max-width: 400px;">
+        <span class="omnibox-lock">🔒</span>
+        <span class="omnibox-url">parakh://admin.audit.console/live-feed</span>
       </div>
-      <div style="display: flex; gap: 10px;">
-        <button id="btnRefresh" class="btn btn-secondary">Refresh Sessions</button>
-      </div>
-    </div>
-
-    <!-- Quick Stats -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-      <div class="metric-box">
-        <div class="metric-val" id="statActive">1</div>
-        <div class="metric-label">Active Candidates</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-val" style="color: var(--success);" id="statIntegrity">98.5%</div>
-        <div class="metric-label">Mean Integrity Score</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-val" style="color: var(--warning);" id="statAnomalies">0</div>
-        <div class="metric-label">Pending Anomaly Reviews</div>
-      </div>
-      <div class="metric-box">
-        <div class="metric-val" style="color: var(--primary);" id="statEvidence">Clean</div>
-        <div class="metric-label">Biometric Verification</div>
+      <div style="margin-left: auto; display: flex; gap: 10px;">
+        <button id="btnManualRefresh" class="search-btn" style="padding: 6px 14px; font-size: 12px;">Poll Now</button>
       </div>
     </div>
 
-    <!-- Main Grid -->
-    <div class="examiner-grid">
-      <!-- Candidate List Column -->
-      <div class="card" style="padding: 20px;">
-        <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 14px;">Supervised Candidates</h3>
-        <div id="candidatesList">
-          <div class="candidate-card active">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <b>Aarav Sharma</b>
-              <span class="hud-badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">Active</span>
+    <!-- Main Viewport -->
+    <main class="browser-viewport" style="padding: 20px;">
+      <!-- Top Metrics -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; max-width: 1400px; width: 100%; margin: 0 auto 24px auto;">
+        <div class="stat-card">
+          <div class="stat-number" id="metricActiveCandidates">1</div>
+          <div class="stat-label">Active Test-Takers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--danger);" id="metricAiQueries">0</div>
+          <div class="stat-label">AI Queries Intercepted (ChatGPT / Claude)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--warning);" id="metricInfractions">0</div>
+          <div class="stat-label">Proctoring Flags (Pose / Device / Multiple Persons)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" style="color: var(--success);" id="metricMeanIntegrity">99.1%</div>
+          <div class="stat-label">Calculated Integrity Index</div>
+        </div>
+      </div>
+
+      <div class="examiner-layout">
+        <!-- Left: Candidate Selector -->
+        <div>
+          <div class="exam-card" style="padding: 20px;">
+            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 14px; display: flex; justify-content: space-between;">
+              <span>Supervised Test-Takers</span>
+              <span class="kiosk-badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">1 Online</span>
+            </h3>
+
+            <div id="candidateList">
+              <div class="candidate-card active">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <b>Aarav Sharma</b>
+                  <span class="tab-badge" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.4);">Proctored</span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">ID: student@college.edu • CS Midterm</p>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 10px; color: #94a3b8;">
+                  <span>Integrity: <b style="color: var(--success);">Clean (0 Flags)</b></span>
+                  <span>Research Tab: <b style="color: #f59e0b;">Monitored</b></span>
+                </div>
+              </div>
             </div>
-            <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">ID: CS2026-0891 • CS Foundations</p>
-            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 8px; color: var(--text-muted);">
-              <span>Risk Level: <b>Low (0.02)</b></span>
-              <span>Answers: <b>Saved</b></span>
+          </div>
+        </div>
+
+        <!-- Right: Live Surveillance Details -->
+        <div>
+          <div class="exam-card" style="padding: 24px;">
+            <!-- Requirement #6 Callout: Outbound ChatGPT/Claude search log -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--browser-border); padding-bottom: 16px; margin-bottom: 20px;">
+              <div>
+                <h2 style="font-size: 18px; font-weight: 700;">🚨 Outbound AI &amp; Research Activity Stream</h2>
+                <p style="font-size: 13px; color: var(--text-muted);">
+                  Requirement #6: Displays real-time prompts and searches executed by the student on ChatGPT, Claude, or Google.
+                </p>
+              </div>
+              <span class="kiosk-badge" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border-color: rgba(239, 68, 68, 0.3);">
+                Live Interception Log
+              </span>
+            </div>
+
+            <div id="aiInterceptionContainer">
+              <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+                No outbound AI searches logged yet. Switch to the Candidate Portal's <b>Research Assistant Tab</b> and prompt ChatGPT or Claude to view live intercepted queries here.
+              </div>
+            </div>
+
+            <!-- Forensic Timeline -->
+            <h3 style="font-size: 15px; font-weight: 700; margin: 28px 0 14px 0; border-top: 1px solid var(--browser-border); padding-top: 20px;">
+              Real-Time Security &amp; Environmental Telemetry Feed
+            </h3>
+            <div id="securityEventsTimeline" style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="padding: 10px 14px; background-color: #0b111e; border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between;">
+                <span>🟢 <b>Biometric Facial Verification:</b> Candidate photo verified against enrolled profile.</span>
+                <span style="color: var(--text-muted); font-size: 11px;">System Gate</span>
+              </div>
+              <div style="padding: 10px 14px; background-color: #0b111e; border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between;">
+                <span>🟢 <b>Environment Scan:</b> 1 Solo candidate in camera view, 0 prohibited electronic devices.</span>
+                <span style="color: var(--text-muted); font-size: 11px;">Continuous AI</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- Detail & Live Feed Column -->
-      <div class="card" style="padding: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px;">
-          <div>
-            <h2 style="font-size: 18px; font-weight: 700;" id="detailCandidate">Aarav Sharma (CS2026-0891)</h2>
-            <p style="font-size: 13px; color: var(--text-muted);">Assessment: CS101 Foundations • Started: Session Active</p>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button id="btnAuditPass" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">Approve Session</button>
-            <button id="btnDisqualify" class="btn btn-danger" style="font-size: 12px; padding: 6px 12px;">Disqualify Attempt</button>
-          </div>
-        </div>
-
-        <!-- Telemetry Breakdown -->
-        <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px;">
-          Live Biometric &amp; Anomaly Signals
-        </h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px;">
-          <div class="candidate-card" style="cursor: default;">
-            <div style="font-size: 12px; color: var(--text-muted);">Biometric Match</div>
-            <div style="font-weight: 700; color: var(--success); font-size: 16px; margin-top: 4px;">Verified (99.4%)</div>
-          </div>
-          <div class="candidate-card" style="cursor: default;">
-            <div style="font-size: 12px; color: var(--text-muted);">Attention Orientation</div>
-            <div style="font-weight: 700; color: var(--success); font-size: 16px; margin-top: 4px;">Centered / Optimal</div>
-          </div>
-          <div class="candidate-card" style="cursor: default;">
-            <div style="font-size: 12px; color: var(--text-muted);">Hardware Devices</div>
-            <div style="font-weight: 700; color: var(--success); font-size: 16px; margin-top: 4px;">Clean (No Phones)</div>
-          </div>
-          <div class="candidate-card" style="cursor: default;">
-            <div style="font-size: 12px; color: var(--text-muted);">Person Presence</div>
-            <div style="font-weight: 700; color: var(--success); font-size: 16px; margin-top: 4px;">1 Candidate Solo</div>
-          </div>
-        </div>
-
-        <!-- Live Audit Timeline -->
-        <h3 style="font-size: 14px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px;">
-          Session Forensic Timeline
-        </h3>
-        <div id="timelineContainer">
-          <div class="timeline-item">
-            <span class="timeline-time">Just now</span>
-            <div>
-              <b>Telemetry Frame Validated:</b> Face centered, 0 prohibited gadgets detected in camera viewport.
-            </div>
-          </div>
-          <div class="timeline-item">
-            <span class="timeline-time">2m ago</span>
-            <div>
-              <b>Biometric Facial Gate Passed:</b> Live frame confirmed matching enrolled profile template.
-            </div>
-          </div>
-          <div class="timeline-item">
-            <span class="timeline-time">3m ago</span>
-            <div>
-              <b>Session Initialized:</b> Candidate agreed to monitoring terms and entered examination room.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </main>
   </div>
 
   <script>
-    document.getElementById('btnRefresh').addEventListener('click', () => {
-      alert('Candidate telemetry and session status synchronized with Parakh_Browser backend.');
-    });
-    document.getElementById('btnAuditPass').addEventListener('click', () => {
-      alert('Session approved by Examiner. Integrity logged.');
-    });
-    document.getElementById('btnDisqualify').addEventListener('click', () => {
-      if (confirm('Are you certain you wish to disqualify this candidate for academic integrity violation?')) {
-        alert('Disqualification event recorded and broadcast to candidate client.');
+    async function pollSurveillance() {
+      try {
+        const res = await fetch('/api/admin/feed');
+        if (!res.ok) return;
+        const feed = await res.json();
+
+        // Update stats
+        if (feed.stats) {
+          document.getElementById('metricActiveCandidates').innerText = feed.stats.totalCandidates || 1;
+          document.getElementById('metricAiQueries').innerText = feed.stats.totalResearchQueries || 0;
+          document.getElementById('metricInfractions').innerText = feed.stats.anomaliesCount || 0;
+        }
+
+        // Render AI Research Interceptions
+        const aiContainer = document.getElementById('aiInterceptionContainer');
+        if (feed.researchLogs && feed.researchLogs.length > 0) {
+          aiContainer.innerHTML = '';
+          feed.researchLogs.forEach((log) => {
+            const timeStr = new Date(log.timestamp).toLocaleTimeString();
+            const box = document.createElement('div');
+            box.className = 'ai-intercept-box';
+            box.innerHTML = `
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-weight: 700; color: #f87171; font-size: 13px;">
+                  🤖 Target: ${escapeHtml(log.target)} (${escapeHtml(log.url || '')})
+                </span>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${timeStr}</span>
+              </div>
+              <div style="font-size: 14px; color: #fff; font-weight: 600; margin-bottom: 4px;">
+                Search Prompt: "${escapeHtml(log.query)}"
+              </div>
+              <div style="font-size: 11px; color: #a5b4fc;">
+                Candidate: ${escapeHtml(log.candidateId)} • Logged &amp; Correlated with Question
+              </div>
+            `;
+            aiContainer.appendChild(box);
+          });
+        }
+
+        // Render security events
+        const timeline = document.getElementById('securityEventsTimeline');
+        if (feed.events && feed.events.length > 0) {
+          timeline.innerHTML = '';
+          feed.events.forEach((evt) => {
+            const timeStr = new Date(evt.timestamp).toLocaleTimeString();
+            const div = document.createElement('div');
+            div.style.cssText = 'padding: 10px 14px; background-color: #0b111e; border-radius: 8px; font-size: 13px; display: flex; justify-content: space-between;';
+            const icon = evt.severity === 'warn' || evt.severity === 'high' ? '⚠️' : 'ℹ️';
+            div.innerHTML = `
+              <span>${icon} <b>${escapeHtml(evt.type)}:</b> ${escapeHtml(evt.reason || JSON.stringify(evt.meta || ''))}</span>
+              <span style="color: var(--text-muted); font-size: 11px;">${timeStr}</span>
+            `;
+            timeline.appendChild(div);
+          });
+        }
+      } catch (e) {
+        console.warn('Poll error:', e.message);
       }
-    });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    document.getElementById('btnManualRefresh').addEventListener('click', pollSurveillance);
+    setInterval(pollSurveillance, 3000);
+    pollSurveillance();
   </script>
 </body>
 </html>

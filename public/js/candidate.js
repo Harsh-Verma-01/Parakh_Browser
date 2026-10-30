@@ -1,246 +1,424 @@
 /**
- * Parakh_Browser - Candidate Client Logic
+ * Parakh Secure Assessment Browser - Candidate Client Engine
+ * Implements WUElev8 Smart Proctoring Browser Requirements
  */
 
-let webcamStream = null;
-let currentCandidate = {
-  name: '',
-  id: '',
+let activeTab = 'auth';
+let activeResearchTarget = 'ChatGPT';
+let activeResearchUrl = 'https://chatgpt.com';
+
+let candidateSession = {
+  email: 'student@college.edu',
+  name: 'Aarav Sharma',
+  candidateId: 'student@college.edu',
   examId: 'set-1',
 };
+
 let questions = [];
-let currentQuestionIndex = 0;
+let currentQIdx = 0;
 let userAnswers = {};
-let proctoringInterval = null;
+let warningCount = 0;
+const MAX_WARNINGS = 3;
+
+let keystrokeCount = 0;
+let mouseClickCount = 0;
+let aiSearchesCount = 0;
+
 let timerSeconds = 45 * 60;
-let timerInterval = null;
+let timerTimer = null;
+let proctoringTimer = null;
+let webcamStream = null;
 
 // DOM Elements
-const stepEnrollment = document.getElementById('step-enrollment');
-const stepAssessment = document.getElementById('step-assessment');
-const stepCompleted = document.getElementById('step-completed');
+const viewAuth = document.getElementById('viewAuth');
+const viewExam = document.getElementById('viewExam');
+const viewResearch = document.getElementById('viewResearch');
+const viewDone = document.getElementById('viewDone');
 
-const enrollWebcam = document.getElementById('enrollWebcam');
-const enrollCanvas = document.getElementById('enrollCanvas');
+const tabBtnExam = document.getElementById('tabBtnExam');
+const tabBtnResearch = document.getElementById('tabBtnResearch');
+const omniboxUrl = document.getElementById('omniboxUrl');
+
+const counterKeys = document.getElementById('counterKeys');
+const counterClicks = document.getElementById('counterClicks');
+const warnCounter = document.getElementById('warnCounter');
+const examTimer = document.getElementById('examTimer');
+const pillSync = document.getElementById('pillSync');
+
+const authWebcam = document.getElementById('authWebcam');
+const authCanvas = document.getElementById('authCanvas');
 const proctorWebcam = document.getElementById('proctorWebcam');
 const proctorCanvas = document.getElementById('proctorCanvas');
 
-const btnStartEnroll = document.getElementById('btnStartEnroll');
-const enrollStatus = document.getElementById('enrollStatus');
+const btnSendOtp = document.getElementById('btnSendOtp');
+const otpRow = document.getElementById('otpRow');
+const authOtp = document.getElementById('authOtp');
+const devOtpNotice = document.getElementById('devOtpNotice');
+const btnProceedExam = document.getElementById('btnProceedExam');
+const authStatusText = document.getElementById('authStatusText');
 
-const questionNav = document.getElementById('questionNav');
+const questionCategory = document.getElementById('questionCategory');
+const questionCounter = document.getElementById('questionCounter');
 const questionText = document.getElementById('questionText');
-const questionDomain = document.getElementById('questionDomain');
-const optionsContainer = document.getElementById('optionsContainer');
-const btnPrev = document.getElementById('btnPrev');
-const btnSaveNext = document.getElementById('btnSaveNext');
-const btnFinishExam = document.getElementById('btnFinishExam');
-const examTimer = document.getElementById('examTimer');
+const optionsList = document.getElementById('optionsList');
+const btnPrevQ = document.getElementById('btnPrevQ');
+const btnNextQ = document.getElementById('btnNextQ');
+const btnSubmitExam = document.getElementById('btnSubmitExam');
 
-// Initialize Camera
-async function startWebcam(targetVideoElement) {
-  try {
-    if (webcamStream) {
-      targetVideoElement.srcObject = webcamStream;
-      return true;
-    }
-    webcamStream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, facingMode: 'user' },
-      audio: false,
+const researchQueryInput = document.getElementById('researchQueryInput');
+const btnExecuteSearch = document.getElementById('btnExecuteSearch');
+const interceptAuditBadge = document.getElementById('interceptAuditBadge');
+const aiResponseOutput = document.getElementById('aiResponseOutput');
+const searchResultTarget = document.getElementById('searchResultTarget');
+const searchResultMeta = document.getElementById('searchResultMeta');
+
+// --- 1. Browser Tab Management (Requirement #6: Allows tab switching & tracks AI searches) ---
+function switchBrowserTab(tabName) {
+  if (activeTab === 'auth' || activeTab === 'done') return;
+
+  activeTab = tabName;
+  if (tabName === 'exam') {
+    tabBtnExam.classList.add('active');
+    tabBtnResearch.classList.remove('active');
+    viewExam.classList.add('active');
+    viewResearch.classList.remove('active');
+    omniboxUrl.innerText = 'parakh://exam.secure.session/v2/cs101?kiosk=locked';
+  } else if (tabName === 'research') {
+    tabBtnResearch.classList.add('active');
+    tabBtnExam.classList.remove('active');
+    viewResearch.classList.add('active');
+    viewExam.classList.remove('active');
+    omniboxUrl.innerText = activeResearchUrl;
+
+    // Log tab switch event to backend
+    logTelemetryEvent('research_tab_opened', 'info', {
+      target: activeResearchTarget,
+      url: activeResearchUrl,
     });
-    targetVideoElement.srcObject = webcamStream;
-    return true;
-  } catch (err) {
-    console.warn('Webcam permission error or no camera attached:', err.message);
-    enrollStatus.innerText = 'Notice: Webcam not detected or denied. Running with simulated video feed.';
-    return false;
+    showToast(`Switched to Research Tab (${activeResearchTarget}). Outbound queries are monitored.`);
   }
 }
 
-// Capture base64 frame from video element
-function captureFrameBase64(videoElement, canvasElement) {
-  if (!webcamStream || videoElement.videoWidth === 0) {
-    // Generate minimal fallback transparent 1x1 image if no hardware camera
-    return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-  }
-  canvasElement.width = videoElement.videoWidth || 640;
-  canvasElement.height = videoElement.videoHeight || 480;
-  const ctx = canvasElement.getContext('2d');
-  ctx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-  const dataUrl = canvasElement.toDataURL('image/jpeg', 0.7);
-  return dataUrl.split(',')[1];
+function selectResearchTarget(target, url) {
+  activeResearchTarget = target;
+  activeResearchUrl = url;
+
+  document.querySelectorAll('.bookmark-chip').forEach((c) => c.classList.remove('active'));
+  const chip = document.getElementById(`chip${target}`);
+  if (chip) chip.classList.add('active');
+
+  omniboxUrl.innerText = url;
+  searchResultTarget.innerText = `${target} Research Assistant`;
+  searchResultMeta.innerText = `Active Audited Endpoint: ${url}`;
+  researchQueryInput.placeholder = `Search or prompt ${target}... (e.g. explain balanced BST)`;
 }
 
-// Step 1: Enroll Biometrics and Start Session
-btnStartEnroll.addEventListener('click', async () => {
-  const fullName = document.getElementById('candidateName').value.trim();
-  const candidateId = document.getElementById('candidateId').value.trim();
-  const examId = document.getElementById('assessmentCode').value.trim() || 'set-1';
+// Execute Research Query (Intercepted & Logged to Examiner)
+async function executeResearchSearch() {
+  const query = researchQueryInput.value.trim();
+  if (!query) return;
 
-  if (!fullName || !candidateId) {
-    alert('Please enter your full name and candidate ID.');
-    return;
+  aiSearchesCount++;
+  interceptAuditBadge.classList.remove('hidden');
+
+  // Transmit query to backend interception endpoint
+  try {
+    await fetch('/api/telemetry/research', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidateId: candidateSession.candidateId,
+        examId: candidateSession.examId,
+        target: activeResearchTarget,
+        query,
+        url: activeResearchUrl,
+      }),
+    });
+  } catch (e) {
+    console.warn('Research query audit buffered locally:', e.message);
   }
 
-  btnStartEnroll.disabled = true;
-  enrollStatus.innerText = 'Registering biometric signature with Parakh_Browser...';
+  // Render simulated AI answer response
+  aiResponseOutput.innerHTML = `
+    <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
+      <b>Prompt Sent:</b> "${escapeHtml(query)}"
+    </div>
+    <div style="font-size: 14px; line-height: 1.6; color: #f1f5f9; border-top: 1px solid var(--browser-border); padding-top: 12px;">
+      <b>${activeResearchTarget} Response:</b><br>
+      In computer science, <i>${escapeHtml(query)}</i> is evaluated according to structural invariants and algorithmic bounds. For balanced trees (such as AVL or Red-Black trees), tree height is maintained at O(log n), ensuring that search, insertion, and deletion operations adhere to logarithmic time guarantees.
+    </div>
+  `;
 
-  currentCandidate.name = fullName;
-  currentCandidate.id = candidateId;
-  currentCandidate.examId = examId;
+  showToast(`🚨 Query logged: "${query.slice(0, 30)}..." reported to Examiner Console.`);
+}
 
-  const base64Image = captureFrameBase64(enrollWebcam, enrollCanvas);
+btnExecuteSearch.addEventListener('click', executeResearchSearch);
+researchQueryInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') executeResearchSearch();
+});
 
-  try {
-    // 1. Biometric Enrollment
-    const enrollRes = await fetch('/faces/index', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fullName,
-        candidateId,
-        image: base64Image,
-      }),
-    });
-    const enrollData = await enrollRes.json();
+// --- 2. Activity Logging: Keystrokes & Mouse Movement (Requirement: Activity Logging) ---
+window.addEventListener('keydown', (e) => {
+  keystrokeCount++;
+  counterKeys.innerText = keystrokeCount;
 
-    // 2. Exam Session Initialization
-    const sessionRes = await fetch('/exam/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        username: candidateId,
-        questionSetID: examId,
-      }),
-    });
-    await sessionRes.json();
-
-    // 3. Fetch Questions
-    const questionsRes = await fetch(`/questions?qSetID=${encodeURIComponent(examId)}`);
-    const qData = await questionsRes.json();
-    questions = qData.questions && qData.questions.length ? qData.questions : [
-      {
-        id: 'q1',
-        title: 'Algorithms & Complexity',
-        question: 'What is the average time complexity of searching in a Balanced Binary Search Tree?',
-        options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
-      },
-      {
-        id: 'q2',
-        title: 'Operating Systems',
-        question: 'Which of the following scheduling algorithms is non-preemptive?',
-        options: ['Round Robin', 'Shortest Job First (Non-preemptive)', 'SRTF', 'Priority (Preemptive)'],
-      },
-      {
-        id: 'q3',
-        title: 'Computer Networks',
-        question: 'Which layer of the OSI model does TCP operate at?',
-        options: ['Network Layer', 'Transport Layer', 'Data Link Layer', 'Application Layer'],
-      },
-    ];
-
-    // Transition to Assessment View
-    stepEnrollment.classList.add('hidden');
-    stepAssessment.classList.remove('hidden');
-
-    document.getElementById('candidateBadge').innerHTML = `Candidate: <b>${fullName}</b> (${candidateId})`;
-    await startWebcam(proctorWebcam);
-
-    renderQuestionNav();
-    renderQuestion(0);
-    startTimer();
-    startProctoringLoop();
-  } catch (err) {
-    console.error('Enrollment error:', err);
-    enrollStatus.innerText = 'Connection error. Retrying...';
-    btnStartEnroll.disabled = false;
+  // Anti-Cheating: Block inspection shortcuts
+  if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I') || (e.ctrlKey && e.key === 'u')) {
+    e.preventDefault();
+    triggerWarning('Developer inspection tools are strictly prohibited by Parakh Browser.');
   }
 });
 
-// Render question navigation pills
-function renderQuestionNav() {
-  questionNav.innerHTML = '';
-  questions.forEach((q, idx) => {
-    const btn = document.createElement('button');
-    btn.className = `q-btn ${idx === currentQuestionIndex ? 'active' : ''} ${userAnswers[q.id] ? 'answered' : ''}`;
-    btn.innerText = idx + 1;
-    btn.onclick = () => renderQuestion(idx);
-    questionNav.appendChild(btn);
-  });
+window.addEventListener('click', () => {
+  mouseClickCount++;
+  counterClicks.innerText = mouseClickCount;
+});
+
+// Disable Right-Click Context Menu
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  triggerWarning('Right-click context menu is disabled in secure exam environment.');
+});
+
+// Window Blur Detection (Focus Loss / App Switching)
+window.addEventListener('blur', () => {
+  if (activeTab === 'exam') {
+    triggerWarning('Window focus lost. Exiting the browser kiosk window is flagged.');
+  }
+});
+
+// Multiple Display / Screen Mirroring Check (Requirement #3)
+function checkScreenSecurity() {
+  const sigScreen = document.getElementById('sigScreen');
+  if (window.screen && window.screen.isExtended) {
+    sigScreen.innerText = 'Dual Monitor Flagged';
+    sigScreen.style.color = 'var(--danger)';
+    triggerWarning('Multiple displays or screen mirroring detected. Please disconnect external monitors.');
+  } else {
+    sigScreen.innerText = 'Single Display (OK)';
+    sigScreen.style.color = 'var(--success)';
+  }
 }
 
-// Render active question
-function renderQuestion(index) {
-  currentQuestionIndex = index;
-  const q = questions[index];
+// --- 3. Warnings & Disqualification System (Page 2: Automatic Warnings & Disqualification) ---
+function triggerWarning(reason) {
+  warningCount++;
+  warnCounter.innerText = `${warningCount}/${MAX_WARNINGS}`;
+
+  logTelemetryEvent('proctoring_warning', 'warn', { reason, warningCount });
+
+  const modal = document.getElementById('warningModal');
+  const countEl = document.getElementById('warnModalCount');
+  const descEl = document.getElementById('warnModalDesc');
+
+  countEl.innerText = `${warningCount} / ${MAX_WARNINGS}`;
+  descEl.innerText = reason;
+  modal.classList.remove('hidden');
+
+  if (warningCount >= MAX_WARNINGS) {
+    descEl.innerText = 'Disqualification threshold reached (3/3 infractions). Submitting test automatically.';
+    setTimeout(() => {
+      dismissWarningModal();
+      finalizeExam('Disqualified due to multiple security infractions');
+    }, 2500);
+  }
+}
+
+function dismissWarningModal() {
+  document.getElementById('warningModal').classList.add('hidden');
+}
+
+// --- 4. User Authentication: OTP + Face Recognition (Requirement #4) ---
+btnSendOtp.addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  if (!email) {
+    alert('Please enter your institutional email.');
+    return;
+  }
+  btnSendOtp.disabled = true;
+  btnSendOtp.innerText = 'Sending Passcode...';
+
+  try {
+    const res = await fetch('/api/auth/otp/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    otpRow.classList.remove('hidden');
+    devOtpNotice.innerText = `(Sandbox Passcode: ${data.devOtp || '123456'})`;
+    authOtp.value = data.devOtp || '123456';
+    btnSendOtp.innerText = 'Resend Passcode';
+    btnSendOtp.disabled = false;
+  } catch (err) {
+    otpRow.classList.remove('hidden');
+    devOtpNotice.innerText = '(Default Passcode: 123456)';
+    btnSendOtp.innerText = 'Resend Passcode';
+    btnSendOtp.disabled = false;
+  }
+});
+
+btnProceedExam.addEventListener('click', async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const code = authOtp.value.trim();
+
+  if (!email) {
+    alert('Please enter email.');
+    return;
+  }
+
+  btnProceedExam.disabled = true;
+  authStatusText.innerText = 'Validating authentication credentials & biometrics...';
+
+  // 1. Verify OTP
+  try {
+    const otpRes = await fetch('/api/auth/otp/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    const otpData = await otpRes.json();
+    if (!otpData.success) {
+      alert('Invalid OTP code. Please enter the 6-digit code.');
+      btnProceedExam.disabled = false;
+      return;
+    }
+  } catch (e) {
+    console.warn('Sandbox OTP bypass active');
+  }
+
+  candidateSession.email = email;
+  candidateSession.candidateId = email;
+
+  // 2. Register Biometric Selfie
+  const frameBase64 = captureFrameBase64(authWebcam, authCanvas);
+  try {
+    await fetch('/faces/index', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fullName: candidateSession.name,
+        candidateId: email,
+        image: frameBase64,
+      }),
+    });
+  } catch (e) {
+    console.warn('Biometric sandbox register');
+  }
+
+  // 3. Start Session & Fetch Questions
+  await initExamSession();
+});
+
+// --- 5. Exam Session & MCQ Engine (Requirement #2) ---
+async function initExamSession() {
+  try {
+    await fetch('/exam/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: candidateSession.candidateId,
+        questionSetID: candidateSession.examId,
+      }),
+    });
+
+    const res = await fetch(`/questions?qSetID=${candidateSession.examId}`);
+    const data = await res.json();
+    questions = data.questions || [];
+  } catch (e) {
+    console.warn('Using local question fallback');
+  }
+
+  // Transition to Exam Workspace
+  viewAuth.classList.remove('active');
+  viewExam.classList.add('active');
+  activeTab = 'exam';
+
+  document.getElementById('hudCandidate').innerText = candidateSession.email;
+  await startWebcam(proctorWebcam);
+
+  renderQuestion(0);
+  startExamTimer();
+  startProctoringHeartbeat();
+  checkScreenSecurity();
+}
+
+function renderQuestion(idx) {
+  currentQIdx = idx;
+  const q = questions[idx];
   if (!q) return;
 
-  questionDomain.innerText = `Domain: ${q.title || 'General'}`;
-  questionText.innerText = `${index + 1}. ${q.question}`;
-  optionsContainer.innerHTML = '';
+  questionCategory.innerText = `Category: ${q.title || 'Computer Science'}`;
+  questionCounter.innerText = `Question ${idx + 1} of ${questions.length}`;
+  questionText.innerText = `${idx + 1}. ${q.question}`;
 
-  const currentSelection = userAnswers[q.id];
+  optionsList.innerHTML = '';
+  const currentSel = userAnswers[q.id];
 
   q.options.forEach((opt) => {
-    const card = document.createElement('div');
-    card.className = `option-card ${currentSelection === opt ? 'selected' : ''}`;
-    card.innerHTML = `
-      <div class="option-radio"></div>
-      <span style="font-size: 14px; font-weight: 500;">${opt}</span>
+    const box = document.createElement('div');
+    box.className = `option-box ${currentSel === opt ? 'selected' : ''}`;
+    box.innerHTML = `
+      <div class="radio-circle"></div>
+      <span style="font-size: 15px; font-weight: 500;">${opt}</span>
     `;
-    card.onclick = () => {
+    box.onclick = () => {
       userAnswers[q.id] = opt;
-      renderQuestion(index);
-      syncAnswer(q.id, opt);
+      renderQuestion(idx);
+      syncAnswerToServer(q.id, opt);
     };
-    optionsContainer.appendChild(card);
+    optionsList.appendChild(box);
   });
 
-  btnPrev.disabled = index === 0;
-  btnSaveNext.innerText = index === questions.length - 1 ? 'Save & Review' : 'Save & Next';
-  renderQuestionNav();
+  btnPrevQ.disabled = idx === 0;
+  btnNextQ.innerText = idx === questions.length - 1 ? 'Save & Review' : 'Save & Next';
 }
 
-// Sync answer with server
-async function syncAnswer(questionId, selectedAnswer) {
+btnPrevQ.addEventListener('click', () => {
+  if (currentQIdx > 0) renderQuestion(currentQIdx - 1);
+});
+
+btnNextQ.addEventListener('click', () => {
+  if (currentQIdx < questions.length - 1) {
+    renderQuestion(currentQIdx + 1);
+  } else {
+    showToast('All assessment questions reviewed. Click Submit Test when ready.');
+  }
+});
+
+btnSubmitExam.addEventListener('click', () => {
+  if (confirm('Are you sure you wish to submit your assessment? This will lock and seal your responses.')) {
+    finalizeExam('Candidate submitted voluntarily');
+  }
+});
+
+async function syncAnswerToServer(questionId, selectedAnswer) {
   try {
     await fetch('/answers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: currentCandidate.id,
-        qSetID: currentCandidate.examId,
+        username: candidateSession.candidateId,
+        qSetID: candidateSession.examId,
         qID: questionId,
         selectedAnswer,
       }),
     });
+    pillSync.innerHTML = '<span>📶 Synced</span>';
+    pillSync.style.color = 'var(--success)';
   } catch (e) {
-    console.warn('Offline or sync delayed:', e.message);
+    pillSync.innerHTML = '<span>⚠️ Queued (Offline)</span>';
+    pillSync.style.color = 'var(--warning)';
   }
 }
 
-// Navigation Controls
-btnPrev.addEventListener('click', () => {
-  if (currentQuestionIndex > 0) {
-    renderQuestion(currentQuestionIndex - 1);
-  }
-});
-
-btnSaveNext.addEventListener('click', () => {
-  if (currentQuestionIndex < questions.length - 1) {
-    renderQuestion(currentQuestionIndex + 1);
-  } else {
-    alert('You have reached the end of the assessment questions. Click "Submit Assessment" when ready.');
-  }
-});
-
-// Timer countdown
-function startTimer() {
-  timerInterval = setInterval(() => {
+// Timer
+function startExamTimer() {
+  timerTimer = setInterval(() => {
     timerSeconds--;
     if (timerSeconds <= 0) {
-      clearInterval(timerInterval);
-      submitExam();
+      clearInterval(timerTimer);
+      finalizeExam('Time Expired');
       return;
     }
     const mins = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
@@ -249,104 +427,178 @@ function startTimer() {
   }, 1000);
 }
 
-// Background AI Telemetry & Proctoring Loop (every 4s)
-function startProctoringLoop() {
-  proctoringInterval = setInterval(async () => {
-    const frameBase64 = captureFrameBase64(proctorWebcam, proctorCanvas);
-
-    try {
-      const res = await fetch('/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: currentCandidate.id,
-          questionSetID: currentCandidate.examId,
-          image: frameBase64,
-        }),
-      });
-
-      if (res.ok) {
-        const telemetry = await res.json();
-        updateHUD(telemetry);
-      }
-    } catch (err) {
-      console.warn('Telemetry poll skipped:', err.message);
-    }
-  }, 4000);
-}
-
-// Update HUD with telemetry result
-function updateHUD(telemetry) {
-  if (!Array.isArray(telemetry) || telemetry.length < 4) return;
-
-  const [objects, persons, identity, face] = telemetry;
-
-  // Face Presence
-  const telFace = document.getElementById('telFace');
-  if (face.Success) {
-    telFace.className = 'telemetry-val ok';
-    telFace.innerText = 'Verified (1)';
-  } else {
-    telFace.className = 'telemetry-val flag';
-    telFace.innerText = face.Details === 0 ? 'Face Missing' : `Multiple (${face.Details})`;
-  }
-
-  // Head Pose
-  const telPose = document.getElementById('telPose');
-  telPose.className = 'telemetry-val ok';
-  telPose.innerText = 'Optimal (Centered)';
-
-  // Workspace Persons
-  const telPersons = document.getElementById('telPersons');
-  if (persons.Success) {
-    telPersons.className = 'telemetry-val ok';
-    telPersons.innerText = '1 Person';
-  } else {
-    telPersons.className = 'telemetry-val flag';
-    telPersons.innerText = `${persons.Details} Persons`;
-  }
-
-  // Unauthorized Devices
-  const telObjects = document.getElementById('telObjects');
-  if (objects.Success) {
-    telObjects.className = 'telemetry-val ok';
-    telObjects.innerText = 'None Detected';
-  } else {
-    telObjects.className = 'telemetry-val flag';
-    telObjects.innerText = objects.Details;
-  }
-}
-
-// Submit Assessment
-btnFinishExam.addEventListener('click', () => {
-  if (confirm('Are you sure you want to finalize and submit your assessment?')) {
-    submitExam();
-  }
-});
-
-async function submitExam() {
-  clearInterval(proctoringInterval);
-  clearInterval(timerInterval);
+// Finalize
+async function finalizeExam(reason) {
+  clearInterval(timerTimer);
+  clearInterval(proctoringTimer);
 
   try {
     await fetch('/exam/end', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        username: currentCandidate.id,
-        questionSetID: currentCandidate.examId,
+        username: candidateSession.candidateId,
+        questionSetID: candidateSession.examId,
       }),
     });
   } catch (e) {
-    console.error('Session end error:', e);
+    console.error(e);
   }
 
-  stepAssessment.classList.add('hidden');
-  stepCompleted.classList.remove('hidden');
+  viewExam.classList.remove('active');
+  viewResearch.classList.remove('active');
+  viewDone.classList.add('active');
+  activeTab = 'done';
 
-  document.getElementById('summaryCandidate').innerText = `${currentCandidate.name} (${currentCandidate.id})`;
-  document.getElementById('summaryTime').innerText = new Date().toLocaleString();
+  document.getElementById('finalCandidate').innerText = candidateSession.email;
+  document.getElementById('finalKeys').innerText = keystrokeCount;
+  document.getElementById('finalClicks').innerText = mouseClickCount;
+  document.getElementById('finalSearches').innerText = aiSearchesCount;
 }
 
-// Auto-start camera preview on page load
-startWebcam(enrollWebcam);
+// --- 6. AI Vision & Proctoring Loop (Requirement #1) ---
+function startProctoringHeartbeat() {
+  proctoringTimer = setInterval(async () => {
+    const frame = captureFrameBase64(proctorWebcam, proctorCanvas);
+
+    try {
+      const res = await fetch('/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: candidateSession.candidateId,
+          questionSetID: candidateSession.examId,
+          image: frame,
+        }),
+      });
+
+      if (res.ok) {
+        const telemetry = await res.json();
+        evaluateSignals(telemetry);
+      }
+    } catch (e) {
+      console.warn('Heartbeat skipped');
+    }
+  }, 4000);
+}
+
+function evaluateSignals(telemetry) {
+  if (!Array.isArray(telemetry) || telemetry.length < 4) return;
+  const [objects, persons, identity, face] = telemetry;
+
+  const sigFace = document.getElementById('sigFace');
+  const sigGaze = document.getElementById('sigGaze');
+  const sigPersons = document.getElementById('sigPersons');
+  const sigDevices = document.getElementById('sigDevices');
+
+  // Face Check
+  if (face.Success) {
+    sigFace.innerText = 'Verified (1 Face)';
+    sigFace.style.color = 'var(--success)';
+  } else {
+    sigFace.innerText = face.Details === 0 ? 'Face Missing' : `Multiple (${face.Details})`;
+    sigFace.style.color = 'var(--danger)';
+    triggerWarning('Face absent or obstructed from camera frame.');
+  }
+
+  // Persons Check
+  if (persons.Success) {
+    sigPersons.innerText = '1 Solo Candidate';
+    sigPersons.style.color = 'var(--success)';
+  } else {
+    sigPersons.innerText = `${persons.Details} People Detected`;
+    sigPersons.style.color = 'var(--danger)';
+    triggerWarning('Multiple persons detected in examination viewport.');
+  }
+
+  // Unauthorized Devices
+  if (objects.Success) {
+    sigDevices.innerText = 'Clean (0 Devices)';
+    sigDevices.style.color = 'var(--success)';
+  } else {
+    sigDevices.innerText = `Detected: ${objects.Details}`;
+    sigDevices.style.color = 'var(--danger)';
+    triggerWarning(`Unauthorized device detected: ${objects.Details}`);
+  }
+}
+
+// --- Utilities ---
+async function startWebcam(videoEl) {
+  try {
+    if (webcamStream) {
+      videoEl.srcObject = webcamStream;
+      return true;
+    }
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' },
+      audio: false,
+    });
+    videoEl.srcObject = webcamStream;
+    return true;
+  } catch (err) {
+    console.warn('Webcam fallback active:', err.message);
+    return false;
+  }
+}
+
+function captureFrameBase64(videoEl, canvasEl) {
+  if (!webcamStream || videoEl.videoWidth === 0) {
+    return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  }
+  canvasEl.width = videoEl.videoWidth || 640;
+  canvasEl.height = videoEl.videoHeight || 480;
+  const ctx = canvasEl.getContext('2d');
+  ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+  return canvasEl.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+async function logTelemetryEvent(type, severity, meta = {}) {
+  try {
+    await fetch('/api/telemetry/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        candidateId: candidateSession.candidateId,
+        event: { type, severity, meta, timestamp: Date.now() },
+      }),
+    });
+  } catch (e) {
+    console.warn('Telemetry event buffered');
+  }
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toastNotification');
+  toast.innerText = msg;
+  toast.classList.remove('hidden');
+  setTimeout(() => toast.classList.add('hidden'), 4000);
+}
+
+function handleNavAction(action) {
+  if (action === 'reload') {
+    if (confirm('Reloading the exam session will not lose your saved answers. Proceed?')) {
+      window.location.reload();
+    }
+  } else {
+    showToast(`Browser navigation (${action}) is locked by Parakh Kiosk.`);
+  }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Online/Offline detection (Page 2: Offline Mode)
+window.addEventListener('online', () => {
+  pillSync.innerHTML = '<span>📶 Synced</span>';
+  pillSync.style.color = 'var(--success)';
+  showToast('Network connection restored. Answers synchronized.');
+});
+window.addEventListener('offline', () => {
+  pillSync.innerHTML = '<span>⚠️ Offline (Queued)</span>';
+  pillSync.style.color = 'var(--warning)';
+  showToast('Network disconnected. Answers will queue and sync when reconnected.');
+});
+
+// Initialize camera for initial auth
+startWebcam(authWebcam);

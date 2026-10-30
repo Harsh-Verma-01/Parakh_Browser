@@ -3,160 +3,303 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Parakh_Browser - Secure Candidate Assessment</title>
+  <title>Parakh Secure Assessment Browser — Kiosk Edition v2.4</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <!-- Header -->
-  <header class="navbar">
-    <a href="/" class="brand">
-      <div class="brand-logo">P</div>
-      <div class="brand-text">Parakh_Browser</div>
-      <span class="brand-badge">Secure Client</span>
-    </a>
-    <div class="nav-actions">
-      <a href="/" class="nav-link active">Candidate Portal</a>
-      <a href="/examiner" class="nav-link">Examiner Audit Console</a>
+  <div class="browser-window">
+    <!-- 1. Native-style Browser Titlebar -->
+    <header class="browser-titlebar">
+      <div class="window-controls">
+        <span class="traffic-light traffic-close" title="Close Disabled in Kiosk Mode"></span>
+        <span class="traffic-light traffic-min" title="Minimize Disabled in Kiosk Mode"></span>
+        <span class="traffic-light traffic-max" title="Full Screen Locked"></span>
+      </div>
+      <div class="window-title">
+        <span>🛡️ Parakh Secure Assessment Browser</span>
+        <span class="kiosk-badge">Locked Kiosk v2.4</span>
+      </div>
+      <div style="font-size: 11px; color: #64748b; font-weight: 600;">
+        Security Engine: Active • WUElev8 Certified
+      </div>
+    </header>
+
+    <!-- 2. Browser Tab Strip -->
+    <div class="browser-tabstrip">
+      <div id="tabBtnExam" class="browser-tab active" onclick="switchBrowserTab('exam')">
+        <span class="tab-icon">🔒</span>
+        <span>Secure Exam: CS Foundations</span>
+      </div>
+      <div id="tabBtnResearch" class="browser-tab" onclick="switchBrowserTab('research')">
+        <span class="tab-icon">🌐</span>
+        <span>Research Assistant (AI &amp; Web)</span>
+        <span class="tab-badge">Audited</span>
+      </div>
+      <div class="browser-tab" onclick="window.open('/examiner', '_blank')" style="margin-left: auto; max-width: 200px;">
+        <span class="tab-icon">👁️</span>
+        <span>Open Examiner Console ↗</span>
+      </div>
     </div>
-  </header>
 
-  <div class="container">
-    <!-- STEP 1: Registration & Biometric Verification Gate -->
-    <section id="step-enrollment" class="card" style="max-width: 580px; margin: 20px auto;">
-      <h2 class="card-title">Candidate Identity Verification</h2>
-      <p class="card-subtitle">Complete initial biometric check-in to enter the secure assessment session.</p>
-
-      <div class="alert alert-warning">
-        <span>🔒 <b>Monitoring Notice:</b> Webcam telemetry, environment anomalies, and attention orientation will be securely audited during this examination.</span>
+    <!-- 3. Browser Navigation & Omnibox Toolbar -->
+    <div class="browser-toolbar">
+      <div class="nav-buttons">
+        <button class="nav-btn" title="Back" onclick="handleNavAction('back')">←</button>
+        <button class="nav-btn" title="Forward" onclick="handleNavAction('forward')">→</button>
+        <button class="nav-btn" title="Reload (Protected)" onclick="handleNavAction('reload')">↻</button>
       </div>
 
-      <div class="form-group">
-        <label>Full Legal Name</label>
-        <input type="text" id="candidateName" class="form-control" placeholder="e.g. Aarav Sharma" value="Aarav Sharma">
+      <!-- Omnibox URL Bar -->
+      <div class="omnibox">
+        <span class="omnibox-lock">🔒</span>
+        <span id="omniboxUrl" class="omnibox-url">parakh://exam.secure.session/v2/cs101?kiosk=locked</span>
+        <span style="font-size: 11px; color: #10b981; font-weight: 700;">TLS 1.3 ENCRYPTED</span>
       </div>
 
-      <div class="form-group">
-        <label>Candidate ID / Roll Number</label>
-        <input type="text" id="candidateId" class="form-control" placeholder="e.g. CS2026-0891" value="CS2026-0891">
-      </div>
-
-      <div class="form-group">
-        <label>Assessment Code</label>
-        <input type="text" id="assessmentCode" class="form-control" placeholder="e.g. set-1" value="set-1">
-      </div>
-
-      <!-- Camera Preview -->
-      <label style="font-size: 13px; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 6px;">
-        Live Biometric Enrollment Photo
-      </label>
-      <div class="webcam-panel">
-        <video id="enrollWebcam" autoplay muted playsinline></video>
-        <canvas id="enrollCanvas" class="hidden"></canvas>
-        <div class="hud-overlay">
-          <div class="hud-badge"><span class="status-dot"></span> Camera Active</div>
+      <!-- Real-Time Browser Telemetry Indicators -->
+      <div class="browser-status-bar">
+        <div class="rec-indicator">
+          <span class="pulse-dot"></span>
+          <span>REC ACTIVE</span>
+        </div>
+        <div class="hud-pill" id="pillActivity">
+          <span>⌨️ <span id="counterKeys">0</span></span>
+          <span style="opacity: 0.4;">|</span>
+          <span>🖱️ <span id="counterClicks">0</span></span>
+        </div>
+        <div class="hud-pill warn" id="pillWarnings">
+          <span>⚠️ Warnings: <b id="warnCounter">0/3</b></span>
+        </div>
+        <div class="hud-pill" style="color: #f59e0b; font-family: monospace; font-size: 14px;">
+          ⏱️ <span id="examTimer">45:00</span>
+        </div>
+        <div class="hud-pill" id="pillSync" style="color: #10b981;">
+          <span>📶 Synced</span>
         </div>
       </div>
+    </div>
 
-      <button id="btnStartEnroll" class="btn btn-primary" style="width: 100%;">
-        Verify Biometrics &amp; Begin Exam
-      </button>
-      <p id="enrollStatus" style="font-size: 13px; margin-top: 12px; text-align: center; color: var(--text-muted);"></p>
-    </section>
+    <!-- 4. Browser Viewport -->
+    <main class="browser-viewport">
+      <!-- VIEW A: Candidate Authentication Gate (OTP + Face Biometrics) -->
+      <section id="viewAuth" class="tab-content active" style="align-items: center; justify-content: center; padding: 40px 20px;">
+        <div class="exam-card" style="max-width: 540px; width: 100%;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <div style="width: 38px; height: 38px; border-radius: 8px; background: linear-gradient(135deg, #6366f1, #3b82f6); display: flex; align-items: center; justify-content: center; font-weight: 700;">P</div>
+            <div>
+              <h2 style="font-size: 20px; font-weight: 700;">Parakh Browser Authentication</h2>
+              <p style="font-size: 13px; color: var(--text-muted);">Step 1: Multi-Factor Candidate Check-in</p>
+            </div>
+          </div>
 
-    <!-- STEP 2: Live Assessment Workspace (Initially Hidden) -->
-    <section id="step-assessment" class="hidden">
-      <div class="card exam-header">
-        <div>
-          <h2 id="examName" style="font-size: 20px; font-weight: 700;">Computer Science Foundations Midterm</h2>
-          <p id="candidateBadge" style="font-size: 13px; color: var(--text-muted); margin-top: 2px;">
-            Candidate: <b>Aarav Sharma</b> (CS2026-0891)
-          </p>
+          <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px; margin: 16px 0; font-size: 12px; color: #fde68a;">
+            🔒 <b>Academic Integrity Policy:</b> Multiple logins, screen sharing, unauthorized tabs, and unverified devices will trigger automatic exam disqualification.
+          </div>
+
+          <!-- Email & OTP Section -->
+          <div id="otpSection">
+            <div style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Institutional Email</label>
+              <input type="email" id="authEmail" class="search-input" value="student@college.edu" placeholder="name@institution.edu" style="padding: 10px 14px; font-size: 14px;">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+              <button id="btnSendOtp" class="search-btn" style="padding: 10px 16px; font-size: 13px; width: 100%;">
+                Request One-Time Passcode (OTP)
+              </button>
+            </div>
+
+            <div id="otpRow" class="hidden" style="margin-bottom: 14px;">
+              <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Enter 6-Digit Passcode</label>
+              <input type="text" id="authOtp" class="search-input" placeholder="e.g. 123456" maxlength="6" style="padding: 10px 14px; font-size: 14px; letter-spacing: 2px;">
+              <p id="devOtpNotice" style="font-size: 12px; color: #10b981; margin-top: 4px;"></p>
+            </div>
+          </div>
+
+          <!-- Biometric Selfie Preview -->
+          <div style="margin-top: 10px;">
+            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">
+              Biometric Facial Registration
+            </label>
+            <div class="webcam-viewport" style="aspect-ratio: 4/3; max-width: 320px; margin: 0 auto 16px;">
+              <video id="authWebcam" autoplay muted playsinline></video>
+              <canvas id="authCanvas" class="hidden"></canvas>
+              <div class="face-mesh-overlay"></div>
+            </div>
+          </div>
+
+          <button id="btnProceedExam" class="search-btn" style="width: 100%; padding: 12px; font-size: 15px;">
+            Verify Identity &amp; Launch Browser Session
+          </button>
+          <p id="authStatusText" style="text-align: center; font-size: 12px; color: var(--text-muted); margin-top: 10px;"></p>
         </div>
-        <div style="display: flex; align-items: center; gap: 16px;">
-          <div class="timer-pill" id="examTimer">45:00</div>
-          <button id="btnFinishExam" class="btn btn-danger">Submit Assessment</button>
-        </div>
-      </div>
+      </section>
 
-      <div class="exam-grid">
-        <!-- Question Panel -->
-        <div class="card">
-          <div class="question-nav" id="questionNav"></div>
+      <!-- VIEW B: Active Exam Tab -->
+      <section id="viewExam" class="tab-content">
+        <div class="exam-layout">
+          <!-- Main MCQ Area -->
+          <div class="exam-card">
+            <div class="question-meta">
+              <span id="questionCategory" style="font-size: 12px; font-weight: 700; color: var(--accent-blue); text-transform: uppercase;">Category: Algorithms &amp; Complexity</span>
+              <span id="questionCounter" style="font-size: 13px; color: var(--text-muted); font-weight: 600;">Question 1 of 4</span>
+            </div>
 
-          <div id="questionContainer">
-            <p id="questionDomain" style="font-size: 12px; font-weight: 700; color: var(--primary); text-transform: uppercase; margin-bottom: 8px;">Domain: Algorithms</p>
-            <h3 id="questionText" class="question-text">Loading question content...</h3>
-            <div id="optionsContainer" class="options-list"></div>
+            <h2 id="questionText" class="question-title">Loading question content...</h2>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 20px;">
-              <button id="btnPrev" class="btn btn-secondary">Previous Question</button>
-              <button id="btnSaveNext" class="btn btn-primary">Save &amp; Next</button>
+            <div id="optionsList" class="options-container"></div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--browser-border); padding-top: 20px; margin-top: auto;">
+              <button id="btnPrevQ" class="nav-btn" style="width: auto; padding: 8px 16px; background-color: #0b111e; border: 1px solid var(--browser-border);">Previous</button>
+              <div style="display: flex; gap: 10px;">
+                <button id="btnNextQ" class="search-btn" style="padding: 8px 20px;">Save &amp; Next</button>
+                <button id="btnSubmitExam" style="background-color: var(--danger); border: none; color: #fff; font-weight: 700; border-radius: 8px; padding: 8px 20px; cursor: pointer;">Submit Test</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Proctoring HUD Sidebar -->
+          <div class="exam-sidebar">
+            <div class="camera-hud-box">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <span style="font-size: 13px; font-weight: 700;">AI Proctoring HUD</span>
+                <span class="kiosk-badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border-color: rgba(16, 185, 129, 0.3);">Real-Time</span>
+              </div>
+
+              <!-- Webcam Box -->
+              <div class="webcam-viewport">
+                <video id="proctorWebcam" autoplay muted playsinline></video>
+                <canvas id="proctorCanvas" class="hidden"></canvas>
+                <div class="face-mesh-overlay"></div>
+              </div>
+
+              <!-- AI Proctor Signals -->
+              <div class="telemetry-row">
+                <span style="color: var(--text-muted);">Biometric Identity</span>
+                <span id="sigFace" style="color: var(--success); font-weight: 700;">Verified (1 Face)</span>
+              </div>
+              <div class="telemetry-row">
+                <span style="color: var(--text-muted);">Eye Gaze / Head Pose</span>
+                <span id="sigGaze" style="color: var(--success); font-weight: 700;">Centered (Optimal)</span>
+              </div>
+              <div class="telemetry-row">
+                <span style="color: var(--text-muted);">Workspace Persons</span>
+                <span id="sigPersons" style="color: var(--success); font-weight: 700;">1 Solo Candidate</span>
+              </div>
+              <div class="telemetry-row">
+                <span style="color: var(--text-muted);">Unauthorized Devices</span>
+                <span id="sigDevices" style="color: var(--success); font-weight: 700;">Clean (0 Devices)</span>
+              </div>
+              <div class="telemetry-row">
+                <span style="color: var(--text-muted);">Screen Mirroring Check</span>
+                <span id="sigScreen" style="color: var(--success); font-weight: 700;">Single Display (OK)</span>
+              </div>
+            </div>
+
+            <!-- Quick Info -->
+            <div class="camera-hud-box" style="font-size: 12px; color: var(--text-muted);">
+              <b>Candidate ID:</b> <span id="hudCandidate">student@college.edu</span><br>
+              <b>Allowed Tools:</b> Research Tab (Audited)<br>
+              <b>Rule:</b> Gaze deviations &gt; 12° or tab blur logged.
             </div>
           </div>
         </div>
+      </section>
 
-        <!-- Live Proctoring HUD Sidecar -->
-        <div>
-          <div class="card" style="padding: 20px;">
-            <h3 style="font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-              <span>Live Proctoring HUD</span>
-              <span class="hud-badge" style="background: rgba(16, 185, 129, 0.15); color: #6ee7b7;">Active</span>
-            </h3>
+      <!-- VIEW C: Research Assistant Tab (Requirement #6: Allows tab switching but tracks what is searched on ChatGPT/Claude) -->
+      <section id="viewResearch" class="tab-content">
+        <div class="research-container">
+          <div class="research-header">
+            <div>
+              <h2 style="font-size: 17px; font-weight: 700;">🌐 Built-in Research &amp; Reference Browser</h2>
+              <p style="font-size: 12px; color: var(--text-muted);">Students may switch tabs to search external documentation. Every query is logged to the Examiner Audit Console.</p>
+            </div>
+            <div class="hud-pill warn">
+              <span>⚠️ AI Interception Active</span>
+            </div>
+          </div>
 
-            <!-- Proctoring Camera Viewport -->
-            <div class="webcam-panel" style="aspect-ratio: 4/3; margin-bottom: 14px;">
-              <video id="proctorWebcam" autoplay muted playsinline></video>
-              <canvas id="proctorCanvas" class="hidden"></canvas>
-              <div class="hud-overlay">
-                <div class="hud-badge"><span id="hudDot" class="status-dot"></span> <span id="hudStatus">AI Monitoring</span></div>
-              </div>
+          <div class="research-banner">
+            <span>🔍 <b>Proctoring Transparency:</b> Searching on ChatGPT, Claude, or Google is permitted, but the examiner receives an instant transcript of the destination and exact search prompt.</span>
+          </div>
+
+          <!-- Bookmarks Bar -->
+          <div class="research-bookmarks">
+            <div class="bookmark-chip active" id="chipChatGPT" onclick="selectResearchTarget('ChatGPT', 'https://chatgpt.com')">
+              <span>🤖</span> <span>ChatGPT (chatgpt.com)</span>
+            </div>
+            <div class="bookmark-chip" id="chipClaude" onclick="selectResearchTarget('Claude', 'https://claude.ai')">
+              <span>⚡</span> <span>Claude (claude.ai)</span>
+            </div>
+            <div class="bookmark-chip" id="chipGoogle" onclick="selectResearchTarget('Google', 'https://google.com/search')">
+              <span>🔎</span> <span>Google Search</span>
+            </div>
+            <div class="bookmark-chip" id="chipStackOverflow" onclick="selectResearchTarget('StackOverflow', 'https://stackoverflow.com')">
+              <span>📚</span> <span>StackOverflow</span>
+            </div>
+          </div>
+
+          <!-- Interactive Search Arena -->
+          <div class="search-arena">
+            <div class="search-box">
+              <input type="text" id="researchQueryInput" class="search-input" placeholder="Ask ChatGPT or enter search query... (e.g. explain Dijkstra algorithm)">
+              <button id="btnExecuteSearch" class="search-btn">Transmit Query</button>
             </div>
 
-            <!-- Telemetry Status Signals -->
-            <div class="telemetry-list">
-              <div class="telemetry-row">
-                <span class="telemetry-label">Facial Presence</span>
-                <span id="telFace" class="telemetry-val ok">Verified (1)</span>
+            <div class="search-results-panel">
+              <div id="interceptAuditBadge" class="intercept-tag hidden">
+                🚨 Search Query Intercepted &amp; Transmitted to Examiner
               </div>
-              <div class="telemetry-row">
-                <span class="telemetry-label">Gaze / Head Pose</span>
-                <span id="telPose" class="telemetry-val ok">Centered (Optimal)</span>
-              </div>
-              <div class="telemetry-row">
-                <span class="telemetry-label">Workspace Persons</span>
-                <span id="telPersons" class="telemetry-val ok">1 Person</span>
-              </div>
-              <div class="telemetry-row">
-                <span class="telemetry-label">Unauthorized Devices</span>
-                <span id="telObjects" class="telemetry-val ok">None Detected</span>
+              <h3 id="searchResultTarget" style="font-size: 16px; font-weight: 700; color: #fff;">ChatGPT 4o Assistant</h3>
+              <p id="searchResultMeta" style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">Active Endpoint: https://chatgpt.com</p>
+
+              <div id="aiResponseOutput" class="ai-response-card">
+                <p style="color: #94a3b8; font-size: 14px;">Enter a query above to test the Smart Proctoring Browser's outbound LLM interception pipeline.</p>
               </div>
             </div>
-
-            <p style="font-size: 11px; color: var(--text-muted); margin-top: 14px; text-align: center;">
-              Frame telemetry analyzed via Parakh AI Engine every 4 seconds.
-            </p>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- STEP 3: Assessment Completed Screen -->
-    <section id="step-completed" class="card hidden" style="max-width: 580px; margin: 40px auto; text-align: center;">
-      <div style="width: 60px; height: 60px; background: rgba(16, 185, 129, 0.15); border: 2px solid var(--success); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 18px;">
-        <span style="font-size: 28px; color: var(--success);">✓</span>
-      </div>
-      <h2 class="card-title">Assessment Submitted Successfully</h2>
-      <p class="card-subtitle">Your responses and proctoring telemetry log have been securely synchronized with the Parakh_Browser examination vault.</p>
+      <!-- VIEW D: Examination Completed Screen -->
+      <section id="viewDone" class="tab-content" style="align-items: center; justify-content: center; padding: 40px 20px;">
+        <div class="exam-card" style="max-width: 540px; width: 100%; text-align: center;">
+          <div style="width: 64px; height: 64px; border-radius: 50%; background: rgba(16, 185, 129, 0.15); border: 2px solid var(--success); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 32px; color: var(--success);">
+            ✓
+          </div>
+          <h2 style="font-size: 22px; font-weight: 700; margin-bottom: 8px;">Assessment Completed</h2>
+          <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px;">Your responses, activity logs, and AI search records have been securely transmitted to the Parakh examination database.</p>
 
-      <div style="background-color: #0b1120; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin: 20px 0; text-align: left; font-size: 13px;">
-        <p><b>Candidate:</b> <span id="summaryCandidate">Aarav Sharma</span></p>
-        <p><b>Session Finalized At:</b> <span id="summaryTime"></span></p>
-        <p><b>Integrity Audit:</b> <span style="color: var(--success); font-weight: 600;">Verified &amp; Archived</span></p>
-      </div>
+          <div style="background-color: #0b111e; border: 1px solid var(--browser-border); border-radius: 8px; padding: 16px; text-align: left; font-size: 13px; margin-bottom: 24px;">
+            <p><b>Candidate:</b> <span id="finalCandidate">student@college.edu</span></p>
+            <p><b>Total Keystrokes Logged:</b> <span id="finalKeys">0</span></p>
+            <p><b>Mouse Clicks Logged:</b> <span id="finalClicks">0</span></p>
+            <p><b>AI Searches Audited:</b> <span id="finalSearches">0</span></p>
+            <p><b>Integrity Status:</b> <span style="color: var(--success); font-weight: 700;">Verified &amp; Sealed</span></p>
+          </div>
 
-      <a href="/" class="btn btn-secondary">Return to Portal Home</a>
-    </section>
+          <button class="search-btn" style="width: 100%; padding: 12px;" onclick="window.location.reload()">Return to Browser Home</button>
+        </div>
+      </section>
+    </main>
   </div>
+
+  <!-- Warning Toast / Modal -->
+  <div id="warningModal" class="modal-backdrop hidden">
+    <div class="modal-content" style="text-align: center;">
+      <div style="font-size: 42px; margin-bottom: 12px;">⚠️</div>
+      <h2 style="font-size: 20px; font-weight: 700; color: var(--warning); margin-bottom: 8px;" id="warnModalTitle">Security Infraction Warning</h2>
+      <p style="font-size: 14px; color: #cbd5e1; margin-bottom: 20px;" id="warnModalDesc">
+        A prohibited action was detected by Parakh Browser.
+      </p>
+      <div style="background-color: #0b111e; border-radius: 8px; padding: 12px; font-size: 13px; color: var(--text-muted); margin-bottom: 24px;">
+        Warning Level: <b id="warnModalCount" style="color: var(--warning);">1 / 3</b> (3 warnings will result in immediate disqualification).
+      </div>
+      <button class="search-btn" style="width: 100%; padding: 12px;" onclick="dismissWarningModal()">Acknowledge &amp; Return to Exam</button>
+    </div>
+  </div>
+
+  <div id="toastNotification" class="toast-notice hidden"></div>
 
   <script src="/js/candidate.js"></script>
 </body>

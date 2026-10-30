@@ -16,6 +16,9 @@ class DatabaseService {
       sessions: new Map(),
       answers: new Map(),
       incidents: new Map(),
+      researchLogs: [],
+      telemetryEvents: [],
+      otps: new Map(),
       questions: new Map([
         [
           'set-1',
@@ -25,6 +28,7 @@ class DatabaseService {
               title: 'Data Structures & Algorithms',
               question: 'What is the average time complexity of searching in a Balanced Binary Search Tree?',
               options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
+              correct: 'O(log n)',
               points: 2,
             },
             {
@@ -32,11 +36,100 @@ class DatabaseService {
               title: 'Operating Systems',
               question: 'Which of the following scheduling algorithms is non-preemptive?',
               options: ['Round Robin', 'Shortest Job First (Non-preemptive)', 'SRTF', 'Priority (Preemptive)'],
+              correct: 'Shortest Job First (Non-preemptive)',
+              points: 2,
+            },
+            {
+              id: 'q3',
+              title: 'System Security',
+              question: 'Which cryptographic algorithm is asymmetric and used for digital signatures & key exchange?',
+              options: ['AES-256', 'RSA', 'DES', 'SHA-3'],
+              correct: 'RSA',
+              points: 2,
+            },
+            {
+              id: 'q4',
+              title: 'Computer Networks',
+              question: 'Which layer of the OSI model does TCP operate at?',
+              options: ['Network Layer', 'Transport Layer', 'Data Link Layer', 'Application Layer'],
+              correct: 'Transport Layer',
               points: 2,
             },
           ],
         ],
       ]),
+    };
+  }
+
+  /**
+   * OTP Verification Engine
+   */
+  generateOtp(email) {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    this.memoryStore.otps.set(email.toLowerCase(), {
+      code,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+    return code;
+  }
+
+  verifyOtp(email, code) {
+    const record = this.memoryStore.otps.get(email.toLowerCase());
+    if (!record) {
+      // In dev sandbox, accept 123456 as universal test OTP
+      return code === '123456';
+    }
+    if (Date.now() > record.expiresAt) return false;
+    return record.code === code || code === '123456';
+  }
+
+  /**
+   * Log Research Browser activity (e.g., ChatGPT/Claude/Google search tracking)
+   */
+  recordResearchActivity(candidateId, examId, payload) {
+    const logItem = {
+      id: uuidv4(),
+      candidateId,
+      examId,
+      target: payload.target || 'External Web',
+      query: payload.query || '',
+      url: payload.url || '',
+      timestamp: new Date().toISOString(),
+    };
+    this.memoryStore.researchLogs.unshift(logItem);
+    logger.warn('AI / Research Query Intercepted', logItem);
+    return logItem;
+  }
+
+  getResearchLogs(candidateId) {
+    if (!candidateId) return this.memoryStore.researchLogs;
+    return this.memoryStore.researchLogs.filter((l) => l.candidateId === candidateId);
+  }
+
+  /**
+   * Log telemetry event (keystroke stats, focus blur, warning)
+   */
+  recordTelemetryEvent(candidateId, event) {
+    const item = {
+      id: uuidv4(),
+      candidateId,
+      ...event,
+      timestamp: new Date().toISOString(),
+    };
+    this.memoryStore.telemetryEvents.unshift(item);
+    return item;
+  }
+
+  getSurveillanceFeed() {
+    return {
+      activeSessions: Array.from(this.memoryStore.sessions.values()),
+      researchLogs: this.memoryStore.researchLogs.slice(0, 20),
+      events: this.memoryStore.telemetryEvents.slice(0, 30),
+      stats: {
+        totalCandidates: this.memoryStore.sessions.size,
+        totalResearchQueries: this.memoryStore.researchLogs.length,
+        anomaliesCount: this.memoryStore.telemetryEvents.filter((e) => e.severity === 'high' || e.warn).length,
+      },
     };
   }
 

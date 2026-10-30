@@ -107,7 +107,29 @@ async function runTests() {
   assert.strictEqual(endRes.statusCode, 200, 'Session end should return 200');
   console.log('   ✓ Session termination passed.');
 
-  console.log('\n🎉 ALL 7 INTEGRATION TESTS PASSED FOR PARAKH_BROWSER!\n');
+  // Test 8: OTP Authentication Engine (WUElev8 Requirement #4)
+  console.log('8. Testing OTP Authentication...');
+  const dbService = require('../src/services/database.service');
+  const otpCode = dbService.generateOtp('student@college.edu');
+  assert(otpCode && otpCode.length === 6, 'Must generate 6-digit OTP code');
+  const isOtpValid = dbService.verifyOtp('student@college.edu', otpCode);
+  assert.strictEqual(isOtpValid, true, 'Generated OTP must verify successfully');
+  console.log('   ✓ OTP Authentication engine passed.');
+
+  // Test 9: AI/LLM Outbound Query Interception (WUElev8 Requirement #6)
+  console.log('9. Testing ChatGPT / Claude Outbound Query Interception...');
+  const logItem = dbService.recordResearchActivity('student@college.edu', 'cs101_midterm', {
+    target: 'ChatGPT',
+    query: 'What is the average time complexity of searching in a Balanced BST?',
+    url: 'https://chatgpt.com',
+  });
+  assert(logItem.id, 'Must generate unique audit log ID');
+  assert.strictEqual(logItem.target, 'ChatGPT', 'Must capture target as ChatGPT');
+  const feed = dbService.getSurveillanceFeed();
+  assert(feed.researchLogs.length > 0, 'Examiner feed must contain intercepted AI query');
+  console.log('   ✓ AI / LLM search interception passed.');
+
+  console.log('\n🎉 ALL 9 WUELEV8 SPECIFICATION TESTS PASSED FOR PARAKH_BROWSER!\n');
 }
 
 runTests().catch((err) => {

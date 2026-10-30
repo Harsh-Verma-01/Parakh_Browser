@@ -113,10 +113,78 @@ const server = http.createServer(async (req, res) => {
         body: JSON.stringify({
           status: 'healthy',
           system: 'Parakh_Browser',
-          version: '1.0.0',
+          version: '2.0.0',
           portal: `http://127.0.0.1:${PORT}`,
           examiner: `http://127.0.0.1:${PORT}/examiner`,
           timestamp: new Date().toISOString(),
+        }),
+      };
+    }
+    // Authentication OTP
+    else if (pathname === '/api/auth/otp/send' && method === 'POST') {
+      const email = body.email || 'candidate@example.edu';
+      const devOtp = require('./src/services/database.service').generateOtp(email);
+      result = {
+        statusCode: 200,
+        headers: defaultHeaders,
+        body: JSON.stringify({ success: true, message: 'OTP sent to email', devOtp }),
+      };
+    } else if (pathname === '/api/auth/otp/verify' && method === 'POST') {
+      const { email, code } = body;
+      const isValid = require('./src/services/database.service').verifyOtp(email || '', code || '');
+      result = {
+        statusCode: isValid ? 200 : 401,
+        headers: defaultHeaders,
+        body: JSON.stringify({ success: isValid, message: isValid ? 'Authenticated' : 'Invalid code' }),
+      };
+    }
+    // Research Browser & AI Search Interception
+    else if (pathname === '/api/telemetry/research' && method === 'POST') {
+      const db = require('./src/services/database.service');
+      const item = db.recordResearchActivity(body.candidateId, body.examId, body);
+      result = {
+        statusCode: 200,
+        headers: defaultHeaders,
+        body: JSON.stringify({ success: true, recorded: item }),
+      };
+    } else if (pathname === '/api/telemetry/research' && method === 'GET') {
+      const db = require('./src/services/database.service');
+      const logs = db.getResearchLogs(queryParams.candidateId);
+      result = {
+        statusCode: 200,
+        headers: defaultHeaders,
+        body: JSON.stringify({ success: true, logs }),
+      };
+    }
+    // Telemetry Events & Keystrokes
+    else if (pathname === '/api/telemetry/events' && method === 'POST') {
+      const db = require('./src/services/database.service');
+      const rec = db.recordTelemetryEvent(body.candidateId, body.event || body);
+      result = {
+        statusCode: 200,
+        headers: defaultHeaders,
+        body: JSON.stringify({ success: true, event: rec }),
+      };
+    }
+    // Examiner Surveillance Feed
+    else if (pathname === '/api/admin/feed' && method === 'GET') {
+      const db = require('./src/services/database.service');
+      result = {
+        statusCode: 200,
+        headers: defaultHeaders,
+        body: JSON.stringify(db.getSurveillanceFeed()),
+      };
+    }
+    // Low-Code / Airtable Question Import Simulation
+    else if (pathname === '/api/questions/import/airtable' && method === 'POST') {
+      result = {
+        statusCode: 200,
+        headers: defaultHeaders,
+        body: JSON.stringify({
+          success: true,
+          source: 'Airtable Base (Assessments Table)',
+          importedQuestions: 4,
+          message: 'Questions synchronized from low-code backend successfully',
         }),
       };
     }
